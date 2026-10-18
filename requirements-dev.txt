@@ -1,0 +1,6 @@
+# Tests and packaging (pip install -r requirements-dev.txt)
+-r requirements.txt
+pytest>=8
+httpx>=0.27
+websockets>=12
+pyinstaller>=6

@@ -1,0 +1,10 @@
+# Runtime dependencies for AudioPatch
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2
+sounddevice>=0.5
+numpy>=2.0
+soundfile>=0.12
+pycaw>=20240316; sys_platform == "win32"
+comtypes>=1.4; sys_platform == "win32"
+PyAudioWPatch>=0.2.12; sys_platform == "win32"

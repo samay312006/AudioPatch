@@ -1,0 +1,21 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Build output (PyInstaller) and release archives
+build/
+dist/
+*.zip
+
+# Personal settings: device setup saved by the app
+presets/*.json
+
+# Tooling
+.playwright-mcp/
+*.tsbuildinfo
