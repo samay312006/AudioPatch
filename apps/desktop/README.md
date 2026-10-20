@@ -23,6 +23,7 @@ can join as outputs over Bluetooth, and any paired phone can play its own audio 
 | 🕰 **Drift correction** | Every device has its own clock, so over a long movie they'd slowly drift apart. AudioPatch continuously nudges playback speed (by at most 0.3%, which you can't hear) so they never do. |
 | 📱 **Phones over Bluetooth** | **Use as output:** a phone running the AudioPatch app plays the PC's sound (on its speaker or its own headphones). **Play its audio here:** any paired phone sends its sound to the PC, which routes it to your outputs. |
 | 🔌 **Hot-plug** | Devices that connect show up within a couple of seconds. If a device you're using disconnects, it's greyed out, its settings are kept, and audio resumes when it comes back. Phones reconnect automatically. |
+| 🔈 **Windows volume check** | Warns when a device's own Windows volume is so low it's almost silent (easy to miss, because with VB-Cable the volume keys no longer reach real devices) and fixes it in one click. |
 | 🛡 **Feedback protection** | Never plays system audio back into the device it's captured from, and never lets a phone be an output and a source at once (both would echo forever). |
 | ⚡ **Stable / Low latency** | Bigger buffers for no dropouts, or smaller ones for less delay. |
 | 🖥 **Desktop app** | Runs in its own window, quits when you close it, and remembers your setup. Everything stays on your PC. |
@@ -254,7 +255,7 @@ This rebuilds the dashboard and runs PyInstaller with [`audiopatch.spec`](audiop
 .venv\Scripts\python -m pytest
 ```
 
-71 tests, no audio hardware or Bluetooth needed. They cover the mixer, ring buffer, resampler, delay buffer, drift
+73 tests, no audio hardware or Bluetooth needed. They cover the mixer, ring buffer, resampler, delay buffer, drift
 correction (simulated clock mismatch), calibration signal detection, routing persistence, device classification,
 the HTTP API, Opus encoding and the phone link protocol (over a simulated transport).
 
@@ -318,7 +319,9 @@ Windows output (the blue banner's button, or Windows Settings → System → Sou
 
 **I hear nothing.**
 - Is **System audio** added as a source, with its **Plays to** chips switched on (blue)?
-- Is the output muted, or is its Windows volume at 0? Click the 🔔 test sound to check the device itself.
+- Is the output muted, or is its **Windows** volume very low? Once VB-Cable is the Windows output, your keyboard
+  volume keys control VB-Cable, not your real devices, so a speaker left at 2% stays almost silent. AudioPatch warns
+  on the device's card ("Windows volume is 2%") with a **Set to 50%** button. Click the 🔔 test sound to check the device itself.
 - Is the System audio meter moving while something plays? If not, check that Windows' output is *CABLE Input*.
 - If you switched Windows' output back to your headphones, either use AudioPatch again or remove the headphones from AudioPatch.
 

@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
 enum class Mode(val title: String, val blurb: String) {
-    ROUTER("Router", "Play this phone's audio on several of its outputs at once"),
+    ROUTER("Router", "Play this phone's audio on several devices at once"),
     RECEIVER("Wireless output", "Play your PC's audio on this phone, over Bluetooth"),
     SENDER("Send to PC", "Play this phone's audio through your PC, over Bluetooth"),
 }

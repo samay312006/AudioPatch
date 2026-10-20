@@ -12,12 +12,28 @@ android {
         minSdk = 29          // Android 10: first version with AudioPlaybackCapture
         targetSdk = 35
         versionCode = 1
-        versionName = "0.2.0"
+        versionName = "0.3.0"
+    }
+
+    // Release signing comes from ~/.gradle/gradle.properties (never from the repo):
+    // AUDIOPATCH_KEYSTORE, AUDIOPATCH_KEYSTORE_PASSWORD, AUDIOPATCH_KEY_ALIAS, AUDIOPATCH_KEY_PASSWORD.
+    // Without them, release builds are unsigned and debug builds work as usual.
+    val keystore = providers.gradleProperty("AUDIOPATCH_KEYSTORE").orNull
+    signingConfigs {
+        if (keystore != null) {
+            create("release") {
+                storeFile = file(keystore)
+                storePassword = providers.gradleProperty("AUDIOPATCH_KEYSTORE_PASSWORD").get()
+                keyAlias = providers.gradleProperty("AUDIOPATCH_KEY_ALIAS").get()
+                keyPassword = providers.gradleProperty("AUDIOPATCH_KEY_PASSWORD").get()
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (keystore != null) signingConfig = signingConfigs.getByName("release")
         }
     }
     compileOptions {

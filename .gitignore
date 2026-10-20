@@ -28,3 +28,7 @@ dist/
 
 # ---- Tooling ----
 .playwright-mcp/
+
+# Research notes and reports (local)
+research_notes/
+reports/

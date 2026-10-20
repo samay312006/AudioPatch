@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/samay312006/AudioPatch/releases/latest"><b>⬇ Download for Windows</b></a>
+  <a href="https://github.com/samay312006/AudioPatch/releases/latest"><b>⬇ Download for Windows and Android</b></a>
   ·
   <a href="apps/desktop#quick-start">Quick start</a>
   ·
@@ -35,7 +35,7 @@ It measures each device's lag for you with your laptop's microphone.
 | App | What it does | Status | Get it |
 |---|---|---|---|
 | **[Windows](apps/desktop)** | The router: system audio and mics to any number of outputs, routing matrix, volume, lip-sync delay, drift correction, sync calibration, hot-plug. Plus phones over Bluetooth. | ✅ Released | [Download](https://github.com/samay312006/AudioPatch/releases/latest) |
-| **[Android](apps/android)** | **Wireless output**: the phone plays the PC's sound (on its speaker or its own headphones). **Send to PC**: the phone's sound plays through the PC. **Router**: phone audio on several of its outputs. | 🚧 In development: Wireless output and Send to PC work, Router is next | [Build from source](apps/android#build-and-install-from-source); APK coming with the first Android release |
+| **[Android](apps/android)** | **Wireless output**: the phone plays the PC's sound (on its speaker or its own headphones). **Send to PC**: the phone's sound plays through the PC. **Router**: phone audio on several devices at once. | ✅ Wireless output and Send to PC released · 🚧 Router in development ([why](apps/android#router-and-the-one-headset-limit)) | [Download APK](https://github.com/samay312006/AudioPatch/releases/latest) |
 
 ### Phones and the PC, over Bluetooth
 
@@ -62,6 +62,15 @@ The protocol and the measurements behind its design are in [docs/bluetooth-link.
 
 Full guide, troubleshooting and the local API: **[apps/desktop/README.md](apps/desktop/README.md)**.
 
+## Quick start (Android)
+
+1. Pair your phone with the PC once (Bluetooth settings).
+2. Install **`AudioPatch-android.apk`** from the [latest release](https://github.com/samay312006/AudioPatch/releases/latest) (allow "install unknown apps" when asked).
+3. **To hear the PC on your phone:** in the app, *Wireless output → Turn on wireless output*; on the PC, *Phones → Use as output*, then **+ Add** the phone under Outputs.
+4. **To play the phone's audio through the PC:** on the PC, *Phones → Play its audio here*. Nothing needed in the app.
+
+More: **[apps/android/README.md](apps/android/README.md)**.
+
 ## Repository layout
 
 ```
@@ -70,6 +79,7 @@ apps/
   android/     Android app: Kotlin + Jetpack Compose (README inside)
 docs/
   bluetooth-link.md   PC <-> phone protocol, shared by both apps
+  multi-headphone-research.md   what Android allows for multi-headphone output, with sources
   *.png               screenshots and icon
 ```
 
@@ -77,15 +87,17 @@ Each app builds and tests on its own:
 
 | | Run / build | Tests |
 |---|---|---|
-| Desktop | `cd apps/desktop` → `python run.py` / `python build_exe.py` | `python -m pytest` (71 tests) |
+| Desktop | `cd apps/desktop` → `python run.py` / `python build_exe.py` | `python -m pytest` (73 tests) |
 | Android | `cd apps/android` → `./gradlew assembleDebug` | `./gradlew testDebugUnitTest` (8 tests) |
 
 ## What it can't do
 
 - **It can't remove Bluetooth lag**, only even it out by delaying the faster devices. A phone used as an output adds
   about 300 ms on top of its own headphones' lag.
-- **Phones alone** play to only one Bluetooth headset at a time (some newer phones can share audio with several LE
-  Audio earbuds through the system settings). AudioPatch's phone features work together with a Windows PC.
+- **Phones alone** play to only one classic Bluetooth headset at a time. That's built into Android (no app can change
+  it without root); only LE Audio earbuds can share through Android's own *Audio sharing*. AudioPatch's way around it
+  is the PC: *Send to PC* plays the phone's sound on all the PC's headphones at once. Details and sources:
+  [docs/multi-headphone-research.md](docs/multi-headphone-research.md).
 - **Protected audio** that bypasses Windows' mixer (exclusive mode) can't be captured.
 
 ## Credits

@@ -48,12 +48,31 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        debugRouterTone(intent)
         if (savedInstanceState == null && neededPermissions().all {
                 ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED }) {
             AudioService.resumeIfWasOn(this)
             if (Identity.prefs(this).getBoolean("receiver_on", false)) AppState.selectMode(Mode.RECEIVER)
         }
         setContent { AudioPatchTheme { App() } }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        debugRouterTone(intent)
+    }
+
+    /** Debug builds: `--es router_tone <output ids>` plays a test tone on those outputs
+     *  through the router ("stop" stops it), to test which outputs can play at once. */
+    private fun debugRouterTone(intent: android.content.Intent?) {
+        if (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE == 0) return
+        intent?.getStringExtra("alarm_tone")?.toIntOrNull()?.let { secs ->
+            com.audiopatch.modes.AlarmRouteTest.run(secs)
+            return
+        }
+        val arg = intent?.getStringExtra("router_tone") ?: return
+        if (arg == "stop") AudioService.stop(this)
+        else AudioService.routeTone(this, arg.split(",").mapNotNull { it.trim().toIntOrNull() }.toIntArray())
     }
 }
 
@@ -104,7 +123,7 @@ private fun App() {
         Spacer(Modifier.height(20.dp))
 
         when {
-            ui.mode == Mode.ROUTER -> Hint("Router mode is coming next.")
+            ui.mode == Mode.ROUTER -> com.audiopatch.ui.RouterScreen()
             !granted -> Card {
                 StatusLine(Palette.warn, "Bluetooth access needed")
                 Spacer(Modifier.height(8.dp))
