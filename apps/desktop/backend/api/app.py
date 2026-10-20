@@ -142,6 +142,8 @@ async def lifespan(app: FastAPI):
     watcher.start()
     if os.environ.get("AUDIOPATCH_BT", "1") != "0":
         await asyncio.to_thread(bt.start)
+    else:
+        bt.error = "Phone features are turned off (AUDIOPATCH_BT=0)"
     engine.start()
     pump = asyncio.create_task(_level_pump())
     yield
@@ -174,6 +176,11 @@ class ParamsBody(BaseModel):
 
 class ModeBody(BaseModel):
     mode: str
+
+
+class WinVolumeBody(BaseModel):
+    id: str
+    volume: float
 
 
 class CalibrateBody(BaseModel):
@@ -269,6 +276,20 @@ def set_params(body: ParamsBody):
     except KeyError as e:
         raise HTTPException(400, str(e))
     return routing.snapshot()
+
+
+@app.get("/api/windows-volume")
+def get_windows_volumes():
+    """Windows' own volume (0..1) for each output in the setup that has one."""
+    vols = {oid: dev.endpoint_volume(oid) for oid in routing.snapshot()["outputs"]}
+    return {k: round(v, 3) for k, v in vols.items() if v is not None}
+
+
+@app.post("/api/windows-volume")
+def set_windows_volume(body: WinVolumeBody):
+    if not dev.set_endpoint_volume(body.id, body.volume):
+        raise HTTPException(409, "couldn't change that device's Windows volume")
+    return get_windows_volumes()
 
 
 @app.post("/api/outputs/test")

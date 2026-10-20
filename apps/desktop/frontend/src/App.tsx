@@ -6,11 +6,12 @@ import { PhonesPanel } from "./components/PhonesPanel";
 import { ActiveCard, AvailableRow } from "./components/DeviceCard";
 import { SetupBanner } from "./components/SetupBanner";
 import type { Device, EngineStatus, Routing } from "./types";
-import { post, useEngine } from "./useEngine";
+import { post, useEngine, useWindowsVolumes } from "./useEngine";
 
-function Column({ title, hint, active, available, routing, engine, byId, onError }: {
+function Column({ title, hint, active, available, routing, engine, byId, onError, winVols, setWinVolume }: {
   title: string; hint: string; active: Device[]; available: Device[]; routing: Routing;
   engine: EngineStatus; byId: Map<string, Device>; onError: (m: string) => void;
+  winVols?: Record<string, number>; setWinVolume?: (id: string, v: number) => Promise<void>;
 }) {
   return (
     <section aria-label={title}>
@@ -19,7 +20,10 @@ function Column({ title, hint, active, available, routing, engine, byId, onError
       </h2>
       <ul className="space-y-2">
         <AnimatePresence initial={false}>
-          {active.map((d) => <ActiveCard key={d.id} d={d} routing={routing} engine={engine} byId={byId} onError={onError} />)}
+          {active.map((d) => (
+            <ActiveCard key={d.id} d={d} routing={routing} engine={engine} byId={byId} onError={onError}
+              winVolume={winVols?.[d.id]} setWinVolume={setWinVolume} />
+          ))}
         </AnimatePresence>
         {active.length === 0 && <li className="rounded-xl border border-zinc-800 px-4 py-3 text-sm text-zinc-500">{hint}</li>}
       </ul>
@@ -67,6 +71,7 @@ export default function App() {
   const { devices, routing, system, engine, online, calibration, setCalibration } = useEngine();
   const [error, setError] = useState<string | null>(null);
   const [calibOpen, setCalibOpen] = useState(false);
+  const { vols: winVols, set: setWinVolume } = useWindowsVolumes(routing.outputs);
   const runningOutputs = routing.outputs.filter((id) => engine.devices[id]?.running).length;
   const byId = new Map(devices.map((d) => [d.id, d]));
 
@@ -127,6 +132,7 @@ export default function App() {
         <Column
           title="Outputs" hint="No outputs yet. Add headphones or speakers below."
           active={pick(routing.outputs, "output")} available={availableOf("output")}
+          winVols={winVols} setWinVolume={setWinVolume}
           routing={routing} engine={engine} byId={byId} onError={onError}
         />
       </div>

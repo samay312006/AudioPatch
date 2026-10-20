@@ -228,23 +228,40 @@ def thread_init() -> None:
         comtypes.CoInitialize()
 
 
+def _endpoint(dev_id: str):
+    thread_init()
+    from pycaw.pycaw import AudioUtilities
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return AudioUtilities.CreateDevice(AudioUtilities.GetDeviceEnumerator().GetDevice(dev_id)).EndpointVolume
+
+
 def endpoint_volume(dev_id: str) -> float | None:
-    """Windows' own volume for an output (0..1), or None if unknown/not Windows.
-    A device at 2% can't be heard by the calibration mic."""
-    if OS != "windows" or dev_id.startswith("loopback:"):
+    """Windows' own volume for an output (0..1, 0 if muted), or None if unknown or
+    not a Windows endpoint. Matters because with VB-Cable as the default output,
+    the keyboard volume keys no longer change real devices' volumes."""
+    if OS != "windows" or not dev_id.startswith("{"):
         return None
     try:
-        thread_init()
-        from pycaw.pycaw import AudioUtilities
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            ep = AudioUtilities.GetDeviceEnumerator().GetDevice(dev_id)
-            dev = AudioUtilities.CreateDevice(ep)
-            v = dev.EndpointVolume
-            return 0.0 if v.GetMute() else float(v.GetMasterVolumeLevelScalar())
+        v = _endpoint(dev_id)
+        return 0.0 if v.GetMute() else float(v.GetMasterVolumeLevelScalar())
     except Exception:
         log.debug("couldn't read endpoint volume", exc_info=True)
         return None
+
+
+def set_endpoint_volume(dev_id: str, level: float) -> bool:
+    """Set (and unmute) Windows' own volume for an output."""
+    if OS != "windows" or not dev_id.startswith("{"):
+        return False
+    try:
+        v = _endpoint(dev_id)
+        v.SetMute(0, None)
+        v.SetMasterVolumeLevelScalar(min(max(level, 0.0), 1.0), None)
+        return True
+    except Exception:
+        log.warning("couldn't set endpoint volume", exc_info=True)
+        return False
 
 
 def refresh_portaudio() -> None:

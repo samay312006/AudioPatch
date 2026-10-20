@@ -64,3 +64,9 @@ def test_dashboard_page_is_always_revalidated(client):
     r = client.get("/")
     assert r.status_code == 200 and "<html" in r.text.lower()
     assert r.headers.get("cache-control") == "no-cache"
+
+
+def test_windows_volume_endpoints_ignore_non_windows_devices(client):
+    client.post("/api/outputs", json={"id": "out1"})          # a fake, non-Windows device id
+    assert client.get("/api/windows-volume").json() == {}
+    assert client.post("/api/windows-volume", json={"id": "out1", "volume": 0.5}).status_code == 409

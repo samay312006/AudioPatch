@@ -72,3 +72,29 @@ export async function post(path: string, body: unknown): Promise<void> {
     throw new Error(typeof detail === "string" ? detail : r.statusText);
   }
 }
+
+/**
+ * Windows' own volume (0..1) for each output in the setup. With VB-Cable as the
+ * default device, the keyboard volume keys no longer reach real devices, so a
+ * speaker left at 2% would play almost nothing. Polled: it changes outside the app.
+ */
+export function useWindowsVolumes(outputs: string[]) {
+  const [vols, setVols] = useState<Record<string, number>>({});
+  const key = outputs.join(",");
+  useEffect(() => {
+    let alive = true;
+    const load = () => fetch("/api/windows-volume").then((r) => r.json())
+      .then((v) => { if (alive) setVols(v); }).catch(() => {});
+    load();
+    const t = window.setInterval(load, 3000);
+    return () => { alive = false; window.clearInterval(t); };
+  }, [key]);
+  const set = async (id: string, volume: number) => {
+    const r = await fetch("/api/windows-volume", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, volume }),
+    });
+    if (r.ok) setVols(await r.json());
+    else throw new Error((await r.json().catch(() => ({}))).detail ?? r.statusText);
+  };
+  return { vols, set };
+}

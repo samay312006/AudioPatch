@@ -90,8 +90,9 @@ function IconToggle({ on, onClick, label, title, children }: {
 }
 
 /** A source or output that's part of the setup. */
-export function ActiveCard({ d, routing, engine, byId, onError }: {
+export function ActiveCard({ d, routing, engine, byId, onError, winVolume, setWinVolume }: {
   d: Device; routing: Routing; engine: EngineStatus; byId: Map<string, Device>; onError: (m: string) => void;
+  winVolume?: number; setWinVolume?: (id: string, v: number) => Promise<void>;
 }) {
   const isSource = d.direction === "input";
   const params = routing.params[d.id] ?? {};
@@ -130,6 +131,22 @@ export function ActiveCard({ d, routing, engine, byId, onError }: {
 
       {status?.error && (
         <p className="mt-2 flex items-start gap-1.5 text-xs text-rose-300"><AlertTriangle className="mt-px size-3.5 shrink-0" />{status.error}</p>
+      )}
+
+      {d.connected && winVolume !== undefined && winVolume < 0.15 && (
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-amber-700/60 bg-amber-950/60 px-3 py-2 text-xs text-amber-200">
+          <span className="flex items-start gap-1.5">
+            <AlertTriangle className="mt-px size-3.5 shrink-0" />
+            {winVolume === 0 ? "Muted in Windows" : `Windows volume is ${Math.round(winVolume * 100)}%`}, so this device is almost silent.
+            (Your keyboard volume keys now control VB-Cable, not this device.)
+          </span>
+          <button
+            onClick={() => setWinVolume?.(d.id, 0.5).catch(fail)}
+            className={`rounded-md bg-amber-400 px-2 py-1 font-medium text-zinc-950 hover:bg-amber-300 ${focusRing}`}
+          >
+            Set to 50%
+          </button>
+        </div>
       )}
 
       {d.connected && (
