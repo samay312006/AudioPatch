@@ -1,13 +1,16 @@
 package com.audiopatch
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,12 +26,23 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import com.audiopatch.ui.AudioPatchTheme
+import com.audiopatch.ui.Card
+import com.audiopatch.ui.Hint
 import com.audiopatch.ui.Palette
+import com.audiopatch.ui.Primary
+import com.audiopatch.ui.ReceiverScreen
+import com.audiopatch.ui.SenderScreen
+import com.audiopatch.ui.StatusLine
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -38,10 +52,27 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+/** Runtime permissions the Bluetooth modes need (Android 12+ / 13+). */
+private fun neededPermissions(): Array<String> = buildList {
+    if (Build.VERSION.SDK_INT >= 31) add(Manifest.permission.BLUETOOTH_CONNECT)
+    if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
+}.toTypedArray()
+
 @Composable
 private fun App() {
+    val ctx = LocalContext.current
     val ui by AppState.ui.collectAsState()
-    val busy = ui.run != RunState.IDLE && ui.run != RunState.ERROR
+    val receiver by Engines.receiver(ctx).status.collectAsState()
+    val busy = receiver.waiting || receiver.pc != null
+    var granted by remember {
+        mutableStateOf(neededPermissions().all {
+            ContextCompat.checkSelfPermission(ctx, it) == PackageManager.PERMISSION_GRANTED
+        })
+    }
+    val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { res ->
+        granted = res.filterKeys { it == Manifest.permission.BLUETOOTH_CONNECT }.values.all { it }
+    }
+
     Column(
         Modifier
             .fillMaxSize()
@@ -66,13 +97,18 @@ private fun App() {
         Spacer(Modifier.height(8.dp))
         Text(ui.mode.blurb, color = Palette.muted, fontSize = 14.sp)
         Spacer(Modifier.height(20.dp))
-        ModePlaceholder(ui.mode)
-    }
-}
 
-@Composable
-private fun ModePlaceholder(mode: Mode) {
-    Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
-        Text("${mode.title} coming up next", color = Palette.faint)
+        when {
+            ui.mode == Mode.ROUTER -> Hint("Router mode is coming next.")
+            !granted -> Card {
+                StatusLine(Palette.warn, "Bluetooth access needed")
+                Spacer(Modifier.height(8.dp))
+                Hint("AudioPatch talks to your PC over Bluetooth, and shows a notification while audio plays.")
+                Spacer(Modifier.height(14.dp))
+                Primary("Allow", { ask.launch(neededPermissions()) })
+            }
+            ui.mode == Mode.RECEIVER -> ReceiverScreen()
+            ui.mode == Mode.SENDER -> SenderScreen()
+        }
     }
 }

@@ -1,7 +1,9 @@
 """Bluetooth link to phones.
 
-* Wireless output: the phone app connects to this PC's RFCOMM service and shows
-  up as an output device; the PC streams Opus audio to it.
+* Wireless output: the phone app offers an RFCOMM service; this PC connects to
+  it and the phone shows up as an output device that receives Opus audio. The
+  PC connects (not the phone) because a phone paging a PC from scratch times
+  out on common laptop radios, while the PC paging the phone is reliable.
 * Phone audio: Windows can act as a Bluetooth speaker for a paired phone
   (AudioPlaybackConnection). The phone's sound then plays into the default
   output (VB-Cable), so it arrives in AudioPatch as part of "System audio".
@@ -12,10 +14,12 @@ All Bluetooth I/O runs on one asyncio loop in a background thread. LinkCore
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import threading
 import uuid
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Awaitable, Callable, Protocol
 
 from backend.engine.devices import OS, DeviceInfo
@@ -39,6 +43,7 @@ class Session:
     name: str
     model: str
     transport: Transport
+    link_id: str | None = None   # Bluetooth device id the PC connected to
     streaming: bool = False
     pending: int = 0
     dropped: int = 0
@@ -57,6 +62,7 @@ class LinkCore:
     def __init__(self, on_change: Callable[[], None], pc_name: str):
         self.on_change = on_change
         self.pc_name = pc_name
+        self.on_session: Callable[[Session], None] = lambda s: None
         self.loop: asyncio.AbstractEventLoop | None = None
         self._sessions: dict[str, Session] = {}
 
@@ -70,6 +76,9 @@ class LinkCore:
 
     def has(self, device_id: str) -> bool:
         return device_id in self._sessions
+
+    def session_for_link(self, link_id: str) -> Session | None:
+        return next((s for s in list(self._sessions.values()) if s.link_id == link_id), None)
 
     def send_audio(self, device_id: str, data: bytes) -> bool:
         """Queue one audio frame; returns False if it was dropped (link backed up)."""
@@ -102,7 +111,7 @@ class LinkCore:
                 with s.counter_lock:
                     s.pending -= 1
 
-    async def handle(self, transport: Transport) -> None:
+    async def handle(self, transport: Transport, link_id: str | None = None) -> None:
         """Run one phone connection until it closes."""
         self.loop = asyncio.get_running_loop()
         reader = P.FrameReader()
@@ -124,10 +133,13 @@ class LinkCore:
             if not session:
                 await transport.write(P.control({"t": "error", "error": "bad hello"}))
                 return
+            session.link_id = link_id
+            self.on_session(session)
             await transport.write(P.control({"t": "welcome", "v": P.VERSION, "name": self.pc_name,
                                              "codec": "opus", "rate": P.SAMPLE_RATE,
                                              "frame_ms": P.FRAME_MS}))
             await transport.write(P.control({"t": "state", "streaming": False}))
+            log.info("phone connected: %s", session.name)
             self.on_change()
             while True:
                 kind, payload = await next_frame()
@@ -146,6 +158,7 @@ class LinkCore:
             transport.close()
             if session and self._sessions.get(session.device_id) is session:
                 del self._sessions[session.device_id]
+                log.info("phone disconnected: %s", session.name)
                 self.on_change()
 
     def _register(self, hello: dict, transport: Transport) -> Session | None:
@@ -198,96 +211,191 @@ class _WinRtTransport:
 
 
 class BluetoothService:
-    """Owns the Bluetooth loop thread: the RFCOMM service for phone outputs and
-    AudioPlaybackConnections for phones sending audio to the PC."""
+    """Owns the Bluetooth loop thread: outgoing RFCOMM links to phones running the
+    app (wireless output) and AudioPlaybackConnections for phones sending their
+    audio to the PC."""
 
-    def __init__(self, on_change: Callable[[], None], pc_name: str):
+    RECONNECT_S = 10
+
+    def __init__(self, on_change: Callable[[], None], pc_name: str, memory_file: Path | None = None,
+                 wanted: Callable[[], set[str]] = lambda: set()):
         self.core = LinkCore(on_change, pc_name)
+        self.core.on_session = self._remember
         self.on_change = on_change
+        self.wanted = wanted            # device ids the user has added as outputs
+        self.memory_file = memory_file  # phone app id -> Bluetooth device id, for auto-reconnect
         self.running = False
         self.error: str | None = None
         self.loop: asyncio.AbstractEventLoop | None = None
-        self._provider = None
-        self._listener = None
-        self._incoming: dict[str, object] = {}  # phone device id -> AudioPlaybackConnection
+        self._incoming: dict[str, object] = {}  # A2DP receiver connections, by device id
+        self._connecting: set[str] = set()
+        self._known: dict[str, str] = self._load_memory()
         self._ready = threading.Event()
 
+    # ------------------------------------------------------------ lifecycle
     def start(self) -> None:
         if OS != "windows":
-            self.error = "Bluetooth link needs Windows 10 (2004) or later"
+            self.error = "Phone features need Windows 10 (2004) or later"
             return
         threading.Thread(target=self._thread, name="bluetooth", daemon=True).start()
         self._ready.wait(5)
 
     def stop(self) -> None:
-        if self.loop:
-            self.call(self._shutdown(), timeout=3)
+        if self.loop and self.running:
+            try:
+                self.call(self._shutdown(), timeout=3)
+            except Exception:
+                pass
 
-    def call(self, coro: Awaitable, timeout: float = 10):
+    def call(self, coro: Awaitable, timeout: float = 30):
         """Run a coroutine on the Bluetooth loop from another thread."""
-        if not self.loop:
+        if not self.loop or not self.running:
             raise RuntimeError(self.error or "Bluetooth isn't running")
         return asyncio.run_coroutine_threadsafe(coro, self.loop).result(timeout)
 
     def _thread(self) -> None:
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
-        self.loop.create_task(self._serve())
+        self.core.loop = self.loop
+        self.loop.create_task(self._init())
         self.loop.run_forever()
 
-    async def _serve(self) -> None:
+    async def _init(self) -> None:
         try:
-            from winrt.windows.devices.bluetooth.rfcomm import RfcommServiceId, RfcommServiceProvider
-            from winrt.windows.networking.sockets import StreamSocketListener
-            self._provider = await RfcommServiceProvider.create_async(
-                RfcommServiceId.from_uuid(uuid.UUID(P.SERVICE_UUID)))
-            self._listener = StreamSocketListener()
-            loop = asyncio.get_running_loop()
-            self.core.loop = loop
-            self._listener.add_connection_received(
-                lambda _l, args: loop.call_soon_threadsafe(
-                    lambda: loop.create_task(self.core.handle(_WinRtTransport(args.socket)))))
-            await self._listener.bind_service_name_async(self._provider.service_id.as_string())
-            self._provider.start_advertising(self._listener)
+            from winrt.windows.devices.bluetooth import BluetoothAdapter
+            if await BluetoothAdapter.get_default_async() is None:
+                raise RuntimeError("no Bluetooth adapter")
             self.running = True
-            log.info("Bluetooth link advertising %s", P.SERVICE_UUID)
-        except Exception as e:  # no adapter, Bluetooth off, ...
+            asyncio.get_running_loop().create_task(self._reconnect_loop())
+        except Exception as e:
             self.error = f"Bluetooth unavailable: {e}"
             log.warning(self.error)
         finally:
             self._ready.set()
 
     async def _shutdown(self) -> None:
-        try:
-            if self._provider:
-                self._provider.stop_advertising()
-            for conn in self._incoming.values():
+        for conn in list(self._incoming.values()):
+            try:
                 conn.close()
-        except Exception:
-            pass
+            except Exception:
+                pass
+        for s in list(self.core._sessions.values()):
+            s.transport.close()
 
-    # ------------------------------------------- phone -> PC (A2DP receiver)
+    # --------------------------------------------------------------- phones
     async def phones(self) -> list[dict]:
-        """Paired devices that can play their audio on this PC."""
+        """Paired phones, with the state of both features for each."""
+        from winrt.windows.devices.bluetooth import BluetoothDevice, BluetoothMajorClass
         from winrt.windows.devices.enumeration import DeviceInformation
         from winrt.windows.media.audio import AudioPlaybackConnection
-        found = await DeviceInformation.find_all_async_aqs_filter(AudioPlaybackConnection.get_device_selector())
-        return [{"id": d.id, "name": d.name, "connected": self._is_open(d.id)} for d in found]
+        receivers = {}  # Bluetooth address (hex) -> A2DP receiver device id
+        for d in await DeviceInformation.find_all_async_aqs_filter(AudioPlaybackConnection.get_device_selector()):
+            for part in d.id.upper().replace("&", "_").split("_"):
+                if len(part) == 12 and all(c in "0123456789ABCDEF" for c in part):
+                    receivers[part] = d.id
+        out = []
+        sel = BluetoothDevice.get_device_selector_from_pairing_state(True)
+        for d in await DeviceInformation.find_all_async_aqs_filter(sel):
+            bd = await BluetoothDevice.from_id_async(d.id)
+            if not bd or bd.class_of_device.major_class != BluetoothMajorClass.PHONE:
+                continue
+            addr = f"{bd.bluetooth_address:012X}"
+            session = self.core.session_for_link(d.id)
+            audio_id = receivers.get(addr)
+            out.append({
+                "id": d.id, "name": bd.name, "address": addr,
+                "output": {"connected": session is not None, "connecting": d.id in self._connecting,
+                           "device_id": session.device_id if session else None},
+                "audio": {"available": audio_id is not None, "id": audio_id,
+                          "connected": bool(audio_id and self._is_open(audio_id))},
+            })
+        return sorted(out, key=lambda p: p["name"].lower())
 
-    async def connect_phone(self, device_id: str) -> str:
+    async def connect_output(self, link_id: str) -> None:
+        """Connect to the AudioPatch app on a phone (its Wireless output mode)."""
+        from winrt.windows.devices.bluetooth import BluetoothCacheMode, BluetoothDevice
+        from winrt.windows.devices.bluetooth.rfcomm import RfcommServiceId
+        from winrt.windows.networking.sockets import StreamSocket
+        if self.core.session_for_link(link_id) or link_id in self._connecting:
+            return
+        self._connecting.add(link_id)
+        self.on_change()
+        try:
+            bd = await BluetoothDevice.from_id_async(link_id)
+            if bd is None:
+                raise RuntimeError("that phone isn't paired with this PC")
+            res = await bd.get_rfcomm_services_for_id_with_cache_mode_async(
+                RfcommServiceId.from_uuid(uuid.UUID(P.SERVICE_UUID)), BluetoothCacheMode.UNCACHED)
+            if not res.services:
+                raise RuntimeError(f"open AudioPatch on {bd.name} and turn on Wireless output, then try again")
+            svc = res.services[0]
+            sock = StreamSocket()
+            await sock.connect_async(svc.connection_host_name, svc.connection_service_name)
+            asyncio.get_running_loop().create_task(self.core.handle(_WinRtTransport(sock), link_id))
+            for _ in range(60):  # wait for the phone's hello so it's listed when we return
+                if self.core.session_for_link(link_id):
+                    break
+                await asyncio.sleep(0.05)
+        finally:
+            self._connecting.discard(link_id)
+            self.on_change()
+
+    async def disconnect_output(self, link_id: str) -> None:
+        s = self.core.session_for_link(link_id)
+        if s:
+            self._known.pop(s.phone_id, None)  # the user chose to disconnect: don't auto-reconnect
+            self._save_memory()
+            s.transport.close()
+
+    async def _reconnect_loop(self) -> None:
+        """Reconnect phones that are part of the setup but dropped (out of range,
+        app restarted). Quietly: the phone may simply not be around."""
+        while True:
+            await asyncio.sleep(self.RECONNECT_S)
+            wanted = self.wanted()
+            for phone_id, link_id in list(self._known.items()):
+                if f"bt:{phone_id}" in wanted and not self.core.has(f"bt:{phone_id}"):
+                    try:
+                        await asyncio.wait_for(self.connect_output(link_id), 20)
+                    except Exception:
+                        pass
+
+    def _remember(self, s: Session) -> None:
+        if s.link_id and self._known.get(s.phone_id) != s.link_id:
+            self._known[s.phone_id] = s.link_id
+            self._save_memory()
+
+    def _load_memory(self) -> dict[str, str]:
+        try:
+            return dict(json.loads(self.memory_file.read_text("utf-8"))) if self.memory_file else {}
+        except Exception:
+            return {}
+
+    def _save_memory(self) -> None:
+        if not self.memory_file:
+            return
+        try:
+            self.memory_file.parent.mkdir(parents=True, exist_ok=True)
+            self.memory_file.write_text(json.dumps(self._known, indent=2), "utf-8")
+        except Exception:
+            log.exception("couldn't save phone list")
+
+    # ------------------------------------------- phone -> PC (A2DP receiver)
+    async def connect_audio(self, device_id: str) -> str:
         from winrt.windows.media.audio import AudioPlaybackConnection, AudioPlaybackConnectionOpenResultStatus
         if self._is_open(device_id):
             return "already connected"
         conn = AudioPlaybackConnection.try_create_from_id(device_id)
         if conn is None:
-            raise RuntimeError("this device can't send audio to the PC")
+            raise RuntimeError("this phone can't send audio to the PC")
         conn.add_state_changed(lambda c, _a: self.on_change())
         await conn.start_async()
         result = await conn.open_async()
         if result.status != AudioPlaybackConnectionOpenResultStatus.SUCCESS:
             conn.close()
             hint = {
-                AudioPlaybackConnectionOpenResultStatus.REQUEST_TIMED_OUT: "the phone didn't answer; is Bluetooth on and the phone nearby?",
+                AudioPlaybackConnectionOpenResultStatus.REQUEST_TIMED_OUT:
+                    "the phone didn't answer; is its Bluetooth on and is it nearby?",
                 AudioPlaybackConnectionOpenResultStatus.DENIED_BY_SYSTEM: "Windows refused the connection",
             }.get(result.status, f"failed ({result.status.name})")
             raise RuntimeError(hint)
@@ -295,7 +403,7 @@ class BluetoothService:
         self.on_change()
         return "connected"
 
-    async def disconnect_phone(self, device_id: str) -> None:
+    async def disconnect_audio(self, device_id: str) -> None:
         conn = self._incoming.pop(device_id, None)
         if conn:
             conn.close()

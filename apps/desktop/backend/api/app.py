@@ -92,7 +92,9 @@ def _on_devices(_ds=None) -> None:
 
 
 watcher = dev.DeviceWatcher(on_change=_on_devices)
-bt = BluetoothService(on_change=_on_devices, pc_name=socket.gethostname())
+bt = BluetoothService(on_change=_on_devices, pc_name=socket.gethostname(),
+                      memory_file=PRESETS / "phones.json",
+                      wanted=lambda: set(routing.snapshot()["outputs"]))
 engine = AudioEngine(routing, all_devices)
 engine.bt_core = bt.core
 watcher.reinit_guard = engine.portaudio_guard
@@ -236,6 +238,9 @@ def remove_source(body: DeviceRef):
 @app.post("/api/outputs")
 def add_output(body: DeviceRef):
     d = _find(body.id, "output")
+    if d.kind == "phone" and any(p["output"]["device_id"] == d.id and p["audio"]["connected"] for p in _phones()):
+        raise HTTPException(409, f"{d.name} is sending its own audio to this PC; playing the PC's sound "
+                                 "on it too would loop forever. Stop its phone audio first.")
     routing.add_output(d.id, d.name)
     _push_devices()
     return routing.snapshot()
@@ -281,32 +286,58 @@ def set_mode(body: ModeBody):
     return {"mode": body.mode}
 
 
-# ------------------------------------------- phone audio over Bluetooth
+# ------------------------------------------------------ phones (Bluetooth)
 
-def _bt_call(coro):
+def _bt_call(coro, timeout: float = 30):
     try:
-        return bt.call(coro)
+        return bt.call(coro, timeout)
     except RuntimeError as e:
         raise HTTPException(409, str(e))
     except Exception as e:  # WinRT errors, timeouts
         raise HTTPException(502, f"Bluetooth: {e}")
 
 
+def _phones() -> list[dict]:
+    try:
+        return bt.call(bt.phones(), 15) if bt.running else []
+    except Exception:
+        return []
+
+
 @app.get("/api/bt/phones")
 def bt_phones():
-    """Paired phones that can play their audio through this PC."""
+    """Paired phones, with the state of both phone features."""
     return _bt_call(bt.phones())
 
 
-@app.post("/api/bt/phones/connect")
-def bt_connect(body: DeviceRef):
-    return {"status": _bt_call(bt.connect_phone(body.id))}
+@app.post("/api/bt/phones/output")
+def bt_output_connect(body: DeviceRef):
+    """Connect to the app on this phone so it can be used as an output."""
+    _bt_call(bt.connect_output(body.id), 45)
+    return _bt_call(bt.phones())
 
 
-@app.post("/api/bt/phones/disconnect")
-def bt_disconnect(body: DeviceRef):
-    _bt_call(bt.disconnect_phone(body.id))
-    return {"ok": True}
+@app.post("/api/bt/phones/output/disconnect")
+def bt_output_disconnect(body: DeviceRef):
+    _bt_call(bt.disconnect_output(body.id))
+    return _bt_call(bt.phones())
+
+
+@app.post("/api/bt/phones/audio")
+def bt_audio_connect(body: DeviceRef):
+    """Let this phone play its own audio through the PC (PC as Bluetooth speaker)."""
+    phone = next((p for p in _phones() if p["audio"]["id"] == body.id), None)
+    if phone and phone["output"]["device_id"] in routing.snapshot()["outputs"]:
+        raise HTTPException(409, f"{phone['name']} is one of your outputs; sending its audio here too "
+                                 "would loop forever. Remove it from Outputs first.")
+    _bt_call(bt.connect_audio(body.id), 45)
+    return _bt_call(bt.phones())
+
+
+@app.post("/api/bt/phones/audio/disconnect")
+def bt_audio_disconnect(body: DeviceRef):
+    _bt_call(bt.disconnect_audio(body.id))
+    return _bt_call(bt.phones())
 
 
 # -------------------------------------------------------- calibration

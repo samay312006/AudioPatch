@@ -1,4 +1,4 @@
-export type DeviceKind = "bluetooth" | "usb" | "hdmi" | "wired" | "builtin" | "virtual" | "loopback" | "network" | "unknown";
+export type DeviceKind = "bluetooth" | "usb" | "hdmi" | "wired" | "builtin" | "virtual" | "loopback" | "phone" | "unknown";
 
 export interface Device {
   id: string;
@@ -20,7 +20,7 @@ export interface SystemInfo {
   blackhole_installed: boolean | null;
   default_output: string | null;
   virtual_cable: { installed: boolean; output_id: string | null; is_default: boolean };
-  link?: { running: boolean; error: string | null; name: string; addresses: string[]; port: number };
+  bluetooth?: { running: boolean; error: string | null; name: string };
 }
 
 export interface DeviceParams {
@@ -67,3 +67,12 @@ export type Calibration =
   | { state: "done"; mode: "mic" | "tap"; outputs: Record<string, CalibrationOutputResult>; delays: Record<string, number>; clamped: string[] }
   | { state: "cancelled" }
   | { state: "error"; error: string };
+
+/** A paired phone and the state of both phone features (GET /api/bt/phones). */
+export interface Phone {
+  id: string;
+  name: string;
+  address: string;
+  output: { connected: boolean; connecting: boolean; device_id: string | null };
+  audio: { available: boolean; id: string | null; connected: boolean };
+}
