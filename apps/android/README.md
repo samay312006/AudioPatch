@@ -5,7 +5,7 @@ The phone side of [AudioPatch](../../README.md). It works together with the
 
 > **Status: in development.** *Wireless output* is working and tested on a real phone. *Send to PC* works
 > (it uses standard Bluetooth audio). *Router* mode isn't built yet. There's no downloadable APK yet:
-> it will be added to the [releases](https://github.com/samay312006/atmos/releases) when the app is complete.
+> it will be added to the [releases](https://github.com/samay312006/AudioPatch/releases) when the app is complete.
 > Until then, build it from source (below).
 
 ## Modes

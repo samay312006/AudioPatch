@@ -4,7 +4,7 @@ Play your PC's sound on several headphones and speakers **at the same time**, wi
 with per-device volume and lip-sync correction. Phones running the [AudioPatch Android app](../android)
 can join as outputs over Bluetooth, and any paired phone can play its own audio through the PC.
 
-[⬇ Download the latest release](https://github.com/samay312006/atmos/releases/latest) ·
+[⬇ Download the latest release](https://github.com/samay312006/AudioPatch/releases/latest) ·
 [Quick start](#quick-start) · [Troubleshooting](#troubleshooting) · [Back to the project overview](../../README.md)
 
 ![AudioPatch dashboard with a phone as an output](../../docs/phones.png)
@@ -45,7 +45,7 @@ can join as outputs over Bluetooth, and any paired phone can play its own audio 
 
 ### 1. Download
 
-Grab **`AudioPatch-windows-x64.zip`** from the [latest release](https://github.com/samay312006/atmos/releases/latest),
+Grab **`AudioPatch-windows-x64.zip`** from the [latest release](https://github.com/samay312006/AudioPatch/releases/latest),
 unzip it anywhere (e.g. `Documents\AudioPatch`), and keep the folder together: `AudioPatch.exe` needs the `_internal` folder next to it.
 
 ### 2. Install VB-Cable (one time, free, about 3 MB)
@@ -214,7 +214,7 @@ flowchart LR
 Requirements: **Windows 10/11**, **Python 3.11+**, **Node.js 18+**.
 
 ```powershell
-git clone https://github.com/samay312006/atmos.git
+git clone https://github.com/samay312006/AudioPatch.git
 cd atmos\apps\desktop
 python -m venv .venv
 .venv\Scripts\pip install -r requirements-dev.txt

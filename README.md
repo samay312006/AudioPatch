@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/samay312006/atmos/releases/latest"><b>⬇ Download for Windows</b></a>
+  <a href="https://github.com/samay312006/AudioPatch/releases/latest"><b>⬇ Download for Windows</b></a>
   ·
   <a href="apps/desktop#quick-start">Quick start</a>
   ·
@@ -34,7 +34,7 @@ It measures each device's lag for you with your laptop's microphone.
 
 | App | What it does | Status | Get it |
 |---|---|---|---|
-| **[Windows](apps/desktop)** | The router: system audio and mics to any number of outputs, routing matrix, volume, lip-sync delay, drift correction, sync calibration, hot-plug. Plus phones over Bluetooth. | ✅ Released | [Download](https://github.com/samay312006/atmos/releases/latest) |
+| **[Windows](apps/desktop)** | The router: system audio and mics to any number of outputs, routing matrix, volume, lip-sync delay, drift correction, sync calibration, hot-plug. Plus phones over Bluetooth. | ✅ Released | [Download](https://github.com/samay312006/AudioPatch/releases/latest) |
 | **[Android](apps/android)** | **Wireless output**: the phone plays the PC's sound (on its speaker or its own headphones). **Send to PC**: the phone's sound plays through the PC. **Router**: phone audio on several of its outputs. | 🚧 In development: Wireless output and Send to PC work, Router is next | [Build from source](apps/android#build-and-install-from-source); APK coming with the first Android release |
 
 ### Phones and the PC, over Bluetooth
@@ -55,7 +55,7 @@ The protocol and the measurements behind its design are in [docs/bluetooth-link.
 
 ## Quick start (Windows)
 
-1. Download **`AudioPatch-windows-x64.zip`** from the [latest release](https://github.com/samay312006/atmos/releases/latest) and unzip it.
+1. Download **`AudioPatch-windows-x64.zip`** from the [latest release](https://github.com/samay312006/AudioPatch/releases/latest) and unzip it.
 2. Install the free [VB-Audio Virtual Cable](https://vb-audio.com/Cable/) (once, about 3 MB).
 3. Run **`AudioPatch.exe`**, click **Use VB-Cable as Windows output**, add **System audio** as a source and your
    headphones/speakers as outputs.
