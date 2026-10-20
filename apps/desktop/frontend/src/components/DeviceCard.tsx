@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 import {
-  AlertTriangle, Bell, Bluetooth, Cable, Check, Clock, Headphones, Mic, MonitorSpeaker, Plus, Speaker, Tv, Usb,
+  AlertTriangle, Bell, Bluetooth, Cable, Check, Clock, Headphones, Mic, MonitorSpeaker, Plus, Smartphone, Speaker, Tv, Usb,
   Volume2, VolumeX, X, type LucideIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -10,11 +10,11 @@ import { Meter } from "./Meter";
 
 const ICONS: Record<DeviceKind, LucideIcon> = {
   bluetooth: Bluetooth, usb: Usb, hdmi: Tv, wired: Headphones, builtin: Speaker,
-  virtual: Cable, loopback: MonitorSpeaker, unknown: Volume2,
+  virtual: Cable, loopback: MonitorSpeaker, network: Smartphone, unknown: Volume2,
 };
 const LABELS: Record<DeviceKind, string> = {
   bluetooth: "Bluetooth", usb: "USB", hdmi: "HDMI", wired: "Wired", builtin: "Built-in",
-  virtual: "Virtual", loopback: "System audio", unknown: "Other",
+  virtual: "Virtual", loopback: "System audio", network: "Phone over Wi-Fi", unknown: "Other",
 };
 
 const focusRing = "focus-visible:outline-2 focus-visible:outline-sky-400";
@@ -22,7 +22,8 @@ const focusRing = "focus-visible:outline-2 focus-visible:outline-sky-400";
 export function DeviceIcon({ d }: { d: Device }) {
   const Icon = d.direction === "input" && d.kind === "builtin" ? Mic : ICONS[d.kind];
   const tone = !d.connected ? "bg-zinc-800 text-zinc-500"
-    : d.kind === "bluetooth" ? "bg-sky-500/15 text-sky-400" : "bg-emerald-500/15 text-emerald-400";
+    : d.kind === "bluetooth" ? "bg-sky-500/15 text-sky-400"
+    : d.kind === "network" ? "bg-violet-500/15 text-violet-300" : "bg-emerald-500/15 text-emerald-400";
   return (
     <span className={`grid size-10 shrink-0 place-items-center rounded-lg ${tone}`}>
       <Icon className="size-5" aria-hidden />

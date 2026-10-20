@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { Waves } from "lucide-react";
+import { Smartphone, Waves } from "lucide-react";
 import { useState } from "react";
 import { CalibrationWizard } from "./components/CalibrationWizard";
 import { ActiveCard, AvailableRow } from "./components/DeviceCard";
@@ -96,6 +96,17 @@ export default function App() {
           >
             <Waves className="size-3.5" aria-hidden /> Calibrate sync
           </button>
+          {system?.link && (
+            <span
+              className={`flex items-center gap-1.5 text-xs ${system.link.running ? "text-zinc-400" : "text-amber-400"}`}
+              title={system.link.running
+                ? `Phones on the same Wi-Fi running the AudioPatch app can connect to "${system.link.name}". If a phone can't find this PC, type this address into the app.`
+                : system.link.error ?? "Phone link is off"}
+            >
+              <Smartphone className="size-3.5" aria-hidden />
+              {system.link.running ? <>Phone link · {system.link.addresses[0] ?? "no network"}</> : "Phone link off"}
+            </span>
+          )}
           <ModeToggle mode={engine.mode} onError={onError} />
           <span className={`flex items-center gap-1.5 ${online ? "text-emerald-400" : "text-rose-400"}`}>
             <span className={`size-2 rounded-full ${online ? "bg-emerald-400" : "bg-rose-400"}`} /> {online ? "engine connected" : "engine offline"}

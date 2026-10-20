@@ -15,9 +15,11 @@ from backend.engine.calibration import Calibration
 from backend.engine.devices import DeviceInfo, thread_init
 from backend.engine.mixer import OutputMixer, Params, Route, SourceNode, make_chime
 from backend.engine.routing import RoutingState
-from backend.engine.streams import OutputStream, open_source
+from backend.engine.streams import open_output, open_source
 
 log = logging.getLogger(__name__)
+
+NET_JITTER_MS = 60.0  # extra buffering for audio arriving over Wi-Fi
 
 MODES = {
     # target cushion per route, PortAudio latency hint
@@ -32,6 +34,7 @@ class AudioEngine:
         self.get_devices = get_devices
         self.mode = "stable"
         self.on_status: Callable[[dict], None] = lambda s: None
+        self.link = None  # LinkService, set by the app; needed for phone devices
 
         self._lock = threading.RLock()
         self._params: dict[str, Params] = {}
@@ -188,7 +191,7 @@ class AudioEngine:
                 continue
             mixer = OutputMixer(oid, self._param(oid, None), mode["target_ms"])
             mixer.calibrating = self._calibrating
-            stream = self._open(dev, lambda: OutputStream(dev, mixer, mode["latency"]))
+            stream = self._open(dev, lambda: open_output(dev, mixer, mode["latency"], self.link))
             if stream:
                 self._outputs[oid] = (mixer, stream, _devkey(dev))
 
@@ -199,7 +202,7 @@ class AudioEngine:
             if sid in self._sources:
                 continue
             node = SourceNode(sid, self._param(sid, None))
-            stream = self._open(dev, lambda: open_source(dev, node, mode["latency"]))
+            stream = self._open(dev, lambda: open_source(dev, node, mode["latency"], self.link))
             if stream:
                 self._sources[sid] = (node, stream, _devkey(dev))
 
@@ -216,7 +219,8 @@ class AudioEngine:
                 if captures and want_out[oid].name == captures:
                     self._feedback.add((sid, oid))  # would play back into itself
                     continue
-                live[(sid, oid)] = self._routes.get((sid, oid)) or Route(sid, oid)
+                extra = NET_JITTER_MS if want_src[sid].kind == "network" else 0.0
+                live[(sid, oid)] = self._routes.get((sid, oid)) or Route(sid, oid, extra_ms=extra)
         self._routes = live
 
         # Swap in new topology. Callbacks read these tuples without locking.

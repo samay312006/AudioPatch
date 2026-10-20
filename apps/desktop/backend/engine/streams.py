@@ -158,7 +158,17 @@ def _close(stream) -> None:
         log.debug("stream close failed", exc_info=True)
 
 
-def open_source(dev: DeviceInfo, node: SourceNode, latency):
+def open_source(dev: DeviceInfo, node: SourceNode, latency, link=None):
+    if dev.kind == "network":
+        from backend.link.streams import NetworkSourceStream
+        return NetworkSourceStream(dev, node, link)
     if dev.kind == "loopback" and dev.extra.get("backend") == "pyaudiowpatch":
         return LoopbackStream(dev, node, latency)
     return InputStream(dev, node, latency)
+
+
+def open_output(dev: DeviceInfo, mixer: OutputMixer, latency, link=None):
+    if dev.kind == "network":
+        from backend.link.streams import NetworkOutputStream
+        return NetworkOutputStream(dev, mixer, link)
+    return OutputStream(dev, mixer, latency)

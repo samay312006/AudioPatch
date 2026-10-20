@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from backend.engine import devices as dev
 from backend.engine.engine import MODES, AudioEngine
 from backend.engine.routing import RoutingState
+from backend.link.service import LinkService, lan_addresses
 
 log = logging.getLogger(__name__)
 ROOT = Path(__file__).resolve().parents[2]
@@ -78,14 +79,21 @@ hub = Hub()
 routing = RoutingState(PRESETS / os.environ.get("AUDIOPATCH_SESSION", "session.json"))
 
 
-def _on_devices(ds: list[dev.DeviceInfo]) -> None:
-    hub.publish_threadsafe({"type": "devices", "devices": visible(ds)})
+def all_devices() -> list[dev.DeviceInfo]:
+    """Local sound devices plus phones connected over Wi-Fi."""
+    return watcher.devices + link.devices
+
+
+def _on_devices(_ds=None) -> None:
+    hub.publish_threadsafe({"type": "devices", "devices": visible(all_devices())})
     hub.publish_threadsafe({"type": "system", "system": system_info()})
     engine.request_reconcile()
 
 
 watcher = dev.DeviceWatcher(on_change=_on_devices)
-engine = AudioEngine(routing, lambda: watcher.devices)
+link = LinkService(on_change=_on_devices)
+engine = AudioEngine(routing, all_devices)
+engine.link = link
 watcher.reinit_guard = engine.portaudio_guard
 watcher.busy = lambda: engine.has_streams
 engine.on_status = lambda s: hub.publish_threadsafe({"type": "engine", "engine": s})
@@ -100,6 +108,8 @@ routing.listeners.append(_on_routing)
 
 def system_info() -> dict:
     info = dev.system_info(watcher.devices)
+    info["link"] = {"running": link.running, "error": link.error, "name": link.name,
+                    "addresses": lan_addresses() if link.running else [], "port": link.ports["control"]}
     cables = [d for d in watcher.devices if is_vbcable(d) and d.direction == "output" and d.connected]
     # VB-Cable also installs a 16-channel "CABLE In 16ch"; prefer the stereo one.
     cable = next((d for d in cables if d.name.startswith("CABLE Input")), cables[0] if cables else None)
@@ -128,11 +138,14 @@ async def _level_pump() -> None:
 async def lifespan(app: FastAPI):
     hub.loop = asyncio.get_running_loop()
     watcher.start()
+    if os.environ.get("AUDIOPATCH_LINK", "1") != "0":
+        link.start()
     engine.start()
     pump = asyncio.create_task(_level_pump())
     yield
     pump.cancel()
     watcher.stop()
+    link.stop()
     engine.stop()
 
 
@@ -167,7 +180,7 @@ class CalibrateBody(BaseModel):
 
 
 def _find(dev_id: str, direction: str) -> dev.DeviceInfo:
-    for d in watcher.devices:
+    for d in all_devices():
         if d.id == dev_id and d.direction == direction and not d.hands_free:
             if not d.connected:
                 raise HTTPException(409, f"{d.name} is not connected")
@@ -177,7 +190,7 @@ def _find(dev_id: str, direction: str) -> dev.DeviceInfo:
 
 def _push_devices() -> None:
     # Removing a disconnected device should make it vanish from the list.
-    hub.publish_threadsafe({"type": "devices", "devices": visible(watcher.devices)})
+    hub.publish_threadsafe({"type": "devices", "devices": visible(all_devices())})
 
 
 # --------------------------------------------------------------- read
@@ -190,7 +203,7 @@ def get_system():
 @app.get("/api/devices")
 def get_devices(all: bool = False):
     """?all=true includes paired/absent devices, for debugging."""
-    return [d.to_dict() for d in watcher.devices] if all else visible(watcher.devices)
+    return [d.to_dict() for d in all_devices()] if all else visible(all_devices())
 
 
 @app.get("/api/routing")
@@ -289,7 +302,7 @@ def calibrate_start(body: CalibrateBody):
         engine.start_calibration(outputs, body.mode, _publish_calibration)
     except (RuntimeError, ValueError) as e:
         raise HTTPException(409, str(e))
-    names = {d.id: d.name for d in watcher.devices}
+    names = {d.id: d.name for d in all_devices()}
     quiet = []
     for oid in outputs:
         v = dev.endpoint_volume(oid)
@@ -350,7 +363,7 @@ def use_virtual_cable():
 async def ws_endpoint(ws: WebSocket):
     await ws.accept()
     hub.add(ws)
-    await ws.send_json({"type": "devices", "devices": visible(watcher.devices)})
+    await ws.send_json({"type": "devices", "devices": visible(all_devices())})
     await ws.send_json({"type": "routing", "routing": routing.snapshot()})
     await ws.send_json({"type": "system", "system": system_info()})
     await ws.send_json({"type": "engine", "engine": engine.status()})

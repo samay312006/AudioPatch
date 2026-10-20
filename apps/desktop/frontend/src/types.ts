@@ -1,4 +1,4 @@
-export type DeviceKind = "bluetooth" | "usb" | "hdmi" | "wired" | "builtin" | "virtual" | "loopback" | "unknown";
+export type DeviceKind = "bluetooth" | "usb" | "hdmi" | "wired" | "builtin" | "virtual" | "loopback" | "network" | "unknown";
 
 export interface Device {
   id: string;
@@ -10,7 +10,7 @@ export interface Device {
   samplerate: number;
   latency_ms: number;
   is_default: boolean;
-  extra?: { captures?: string };
+  extra?: { captures?: string; addr?: string; model?: string };
 }
 
 export interface SystemInfo {
@@ -20,6 +20,7 @@ export interface SystemInfo {
   blackhole_installed: boolean | null;
   default_output: string | null;
   virtual_cable: { installed: boolean; output_id: string | null; is_default: boolean };
+  link?: { running: boolean; error: string | null; name: string; addresses: string[]; port: number };
 }
 
 export interface DeviceParams {

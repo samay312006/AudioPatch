@@ -82,9 +82,12 @@ class Route:
     MAX_DEV = 0.003  # +/-0.3% speed: about 5 cents of pitch, inaudible
     EMA = 0.02       # fill smoothing per callback (~0.5 s at 10 ms callbacks)
 
-    def __init__(self, source_id: str, output_id: str, seconds: float = 2.0):
+    def __init__(self, source_id: str, output_id: str, seconds: float = 2.0, extra_ms: float = 0.0):
         self.source_id = source_id
         self.output_id = output_id
+        # Extra cushion on top of the output's target, e.g. to ride out Wi-Fi jitter
+        # from a phone source.
+        self.extra_frames = int(SR * extra_ms / 1000)
         self.ring = RingBuffer(int(SR * seconds), CH)
         self.underruns = 0
         self.skips = 0
@@ -172,9 +175,10 @@ class OutputMixer:
         mix = self._mix[:n]
         mix.fill(0.0)
         tmp = self._tmp[:n]
-        target = self.target_frames + self._delay + n  # fill we hold just before reading
+        base = self.target_frames + self._delay + n  # fill we hold just before reading
 
         for route in self.inputs:
+            target = base + route.extra_frames
             if route.hold > 0:
                 route.hold = max(0, route.hold - n)
                 continue
