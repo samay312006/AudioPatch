@@ -324,13 +324,23 @@ class BluetoothService:
             bd = await BluetoothDevice.from_id_async(link_id)
             if bd is None:
                 raise RuntimeError("that phone isn't paired with this PC")
-            res = await bd.get_rfcomm_services_for_id_with_cache_mode_async(
-                RfcommServiceId.from_uuid(uuid.UUID(P.SERVICE_UUID)), BluetoothCacheMode.UNCACHED)
-            if not res.services:
-                raise RuntimeError(f"open AudioPatch on {bd.name} and turn on Wireless output, then try again")
-            svc = res.services[0]
-            sock = StreamSocket()
-            await sock.connect_async(svc.connection_host_name, svc.connection_service_name)
+            hint = f"couldn't reach the app on {bd.name}: open AudioPatch there, turn on Wireless output, and try again"
+            sock = None
+            for attempt in range(2):  # the phone may still be releasing a previous session
+                try:
+                    res = await bd.get_rfcomm_services_for_id_with_cache_mode_async(
+                        RfcommServiceId.from_uuid(uuid.UUID(P.SERVICE_UUID)), BluetoothCacheMode.UNCACHED)
+                    if res.services:
+                        svc = res.services[0]
+                        sock = StreamSocket()
+                        await sock.connect_async(svc.connection_host_name, svc.connection_service_name)
+                        break
+                except Exception as e:  # WinRT raises bare OSErrors with empty messages
+                    log.info("connect to %s failed (attempt %d): %r", bd.name, attempt + 1, e)
+                    sock = None
+                await asyncio.sleep(2)
+            if sock is None:
+                raise RuntimeError(hint)
             asyncio.get_running_loop().create_task(self.core.handle(_WinRtTransport(sock), link_id))
             for _ in range(60):  # wait for the phone's hello so it's listed when we return
                 if self.core.session_for_link(link_id):

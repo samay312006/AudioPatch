@@ -1,17 +1,19 @@
 # PyInstaller build for AudioPatch.exe. Build with:  python build_exe.py
 # One-folder (not one-file): starts instantly and trips antivirus less often.
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_dynamic_libs, collect_submodules
 
 hidden = (
     collect_submodules("uvicorn")          # uvicorn picks its loop/protocol modules at runtime
     + collect_submodules("websockets")
-    + ["pyaudiowpatch", "pycaw.pycaw", "comtypes.stream"]
+    + collect_submodules("winrt")          # Bluetooth (phones): WinRT projections are imported lazily
+    + ["pyaudiowpatch", "pycaw.pycaw", "comtypes.stream", "pyogg"]
 )
 
 a = Analysis(
     ["run.py"],
     pathex=["."],
     datas=[("frontend/dist", "frontend/dist")],
+    binaries=collect_dynamic_libs("pyogg"),  # opus.dll for streaming to phones
     hiddenimports=hidden,
     excludes=["tkinter", "matplotlib", "pytest", "IPython", "PIL"],
     noarchive=False,
