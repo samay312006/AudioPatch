@@ -158,17 +158,14 @@ def _close(stream) -> None:
         log.debug("stream close failed", exc_info=True)
 
 
-def open_source(dev: DeviceInfo, node: SourceNode, latency, link=None):
-    if dev.kind == "network":
-        from backend.link.streams import NetworkSourceStream
-        return NetworkSourceStream(dev, node, link)
+def open_source(dev: DeviceInfo, node: SourceNode, latency):
     if dev.kind == "loopback" and dev.extra.get("backend") == "pyaudiowpatch":
         return LoopbackStream(dev, node, latency)
     return InputStream(dev, node, latency)
 
 
-def open_output(dev: DeviceInfo, mixer: OutputMixer, latency, link=None):
-    if dev.kind == "network":
-        from backend.link.streams import NetworkOutputStream
-        return NetworkOutputStream(dev, mixer, link)
+def open_output(dev: DeviceInfo, mixer: OutputMixer, latency, bt_core=None):
+    if dev.kind == "phone":  # the AudioPatch app on a phone, over Bluetooth
+        from backend.bt.streams import BtOutputStream
+        return BtOutputStream(dev, mixer, bt_core)
     return OutputStream(dev, mixer, latency)

@@ -1,3 +1,8 @@
 * text=auto
 *.png binary
 *.ico binary
+*.jar binary
+# shell scripts must keep LF, Windows scripts CRLF
+gradlew text eol=lf
+*.sh text eol=lf
+*.bat text eol=crlf

@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import socket
 import sys
 import time
 from contextlib import asynccontextmanager
@@ -17,7 +18,7 @@ from pydantic import BaseModel
 from backend.engine import devices as dev
 from backend.engine.engine import MODES, AudioEngine
 from backend.engine.routing import RoutingState
-from backend.link.service import LinkService, lan_addresses
+from backend.bt.service import BluetoothService
 
 log = logging.getLogger(__name__)
 ROOT = Path(__file__).resolve().parents[2]
@@ -80,8 +81,8 @@ routing = RoutingState(PRESETS / os.environ.get("AUDIOPATCH_SESSION", "session.j
 
 
 def all_devices() -> list[dev.DeviceInfo]:
-    """Local sound devices plus phones connected over Wi-Fi."""
-    return watcher.devices + link.devices
+    """Local sound devices plus phones connected over Bluetooth."""
+    return watcher.devices + bt.core.devices
 
 
 def _on_devices(_ds=None) -> None:
@@ -91,9 +92,9 @@ def _on_devices(_ds=None) -> None:
 
 
 watcher = dev.DeviceWatcher(on_change=_on_devices)
-link = LinkService(on_change=_on_devices)
+bt = BluetoothService(on_change=_on_devices, pc_name=socket.gethostname())
 engine = AudioEngine(routing, all_devices)
-engine.link = link
+engine.bt_core = bt.core
 watcher.reinit_guard = engine.portaudio_guard
 watcher.busy = lambda: engine.has_streams
 engine.on_status = lambda s: hub.publish_threadsafe({"type": "engine", "engine": s})
@@ -108,8 +109,7 @@ routing.listeners.append(_on_routing)
 
 def system_info() -> dict:
     info = dev.system_info(watcher.devices)
-    info["link"] = {"running": link.running, "error": link.error, "name": link.name,
-                    "addresses": lan_addresses() if link.running else [], "port": link.ports["control"]}
+    info["bluetooth"] = {"running": bt.running, "error": bt.error, "name": bt.core.pc_name}
     cables = [d for d in watcher.devices if is_vbcable(d) and d.direction == "output" and d.connected]
     # VB-Cable also installs a 16-channel "CABLE In 16ch"; prefer the stereo one.
     cable = next((d for d in cables if d.name.startswith("CABLE Input")), cables[0] if cables else None)
@@ -138,14 +138,14 @@ async def _level_pump() -> None:
 async def lifespan(app: FastAPI):
     hub.loop = asyncio.get_running_loop()
     watcher.start()
-    if os.environ.get("AUDIOPATCH_LINK", "1") != "0":
-        link.start()
+    if os.environ.get("AUDIOPATCH_BT", "1") != "0":
+        await asyncio.to_thread(bt.start)
     engine.start()
     pump = asyncio.create_task(_level_pump())
     yield
     pump.cancel()
     watcher.stop()
-    link.stop()
+    bt.stop()
     engine.stop()
 
 
@@ -279,6 +279,34 @@ def set_mode(body: ModeBody):
         raise HTTPException(400, f"mode must be one of {sorted(MODES)}")
     engine.set_mode(body.mode)
     return {"mode": body.mode}
+
+
+# ------------------------------------------- phone audio over Bluetooth
+
+def _bt_call(coro):
+    try:
+        return bt.call(coro)
+    except RuntimeError as e:
+        raise HTTPException(409, str(e))
+    except Exception as e:  # WinRT errors, timeouts
+        raise HTTPException(502, f"Bluetooth: {e}")
+
+
+@app.get("/api/bt/phones")
+def bt_phones():
+    """Paired phones that can play their audio through this PC."""
+    return _bt_call(bt.phones())
+
+
+@app.post("/api/bt/phones/connect")
+def bt_connect(body: DeviceRef):
+    return {"status": _bt_call(bt.connect_phone(body.id))}
+
+
+@app.post("/api/bt/phones/disconnect")
+def bt_disconnect(body: DeviceRef):
+    _bt_call(bt.disconnect_phone(body.id))
+    return {"ok": True}
 
 
 # -------------------------------------------------------- calibration
