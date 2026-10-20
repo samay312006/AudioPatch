@@ -28,8 +28,12 @@ export function PhonesPanel({ system, devices, onError }: {
   const [busy, setBusy] = useState<string | null>(null);  // "<phone id>:<feature>"
   const bt = system?.bluetooth;
 
+  const [loadError, setLoadError] = useState<string | null>(null);
   const refresh = useCallback(() => {
-    call("/api/bt/phones").then(setPhones).catch(() => setPhones([]));
+    call("/api/bt/phones")
+      .then((p) => { setPhones(p); setLoadError(null); })
+      // Keep what we know (don't claim "no phones") and try again shortly.
+      .catch((e) => { setLoadError((e as Error).message); window.setTimeout(refresh, 3000); });
   }, []);
 
   // Refetch when the device list changes (a phone connected or dropped).
@@ -63,7 +67,10 @@ export function PhonesPanel({ system, devices, onError }: {
           {bt?.error ?? "Bluetooth is starting…"}
         </p>
       ) : phones === null ? (
-        <p className="flex items-center gap-2 px-1 text-sm text-zinc-500"><Loader2 className="size-4 animate-spin" /> Looking for paired phones…</p>
+        <p className="flex items-center gap-2 px-1 text-sm text-zinc-500">
+          <Loader2 className="size-4 animate-spin" />
+          {loadError ? "Couldn't read Bluetooth devices yet, retrying…" : "Looking for paired phones…"}
+        </p>
       ) : phones.length === 0 ? (
         <p className="rounded-xl border border-zinc-800 px-4 py-3 text-sm text-zinc-500">
           No phones paired with this PC. Pair one in Windows Settings → Bluetooth &amp; devices, then refresh.

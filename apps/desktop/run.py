@@ -50,6 +50,16 @@ def build_frontend(force: bool) -> None:
     subprocess.check_call([npm, "run", "build"], cwd=FRONTEND)
 
 
+def page_url(base: str) -> str:
+    """The dashboard URL tagged with this build, so a window never shows a
+    dashboard cached from a previous version of the app."""
+    index = (Path(getattr(sys, "_MEIPASS", ROOT)) / "frontend" / "dist" / "index.html")
+    try:
+        return f"{base}/?v={int(index.stat().st_mtime)}"
+    except OSError:
+        return base
+
+
 def already_running(url: str) -> bool:
     try:
         with urllib.request.urlopen(url + "/api/system", timeout=1) as r:
@@ -115,7 +125,7 @@ def main() -> None:
     url = f"http://127.0.0.1:{args.port}"
     if already_running(url):
         if not args.no_browser:
-            open_window(url)
+            open_window(page_url(url))
         return
 
     if not FROZEN:
@@ -132,7 +142,7 @@ def main() -> None:
             while not server.started and not server.should_exit:
                 time.sleep(0.05)
             if server.started:
-                (open_window if app_mode else webbrowser.open)(url)
+                (open_window if app_mode else webbrowser.open)(page_url(url))
         threading.Thread(target=launch, daemon=True).start()
     if app_mode:
         threading.Thread(target=quit_when_window_closes, args=(server,), daemon=True).start()

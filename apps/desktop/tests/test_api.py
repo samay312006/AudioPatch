@@ -55,3 +55,12 @@ def test_unknown_or_disconnected_devices_are_rejected(client, monkeypatch):
 
 def test_params_for_unadded_device_is_400(client):
     assert client.post("/api/params", json={"id": "out1", "volume": 1}).status_code == 400
+
+
+def test_dashboard_page_is_always_revalidated(client):
+    """After an update, a cached index.html would load the old dashboard."""
+    if not api.DIST.exists():
+        pytest.skip("dashboard not built")
+    r = client.get("/")
+    assert r.status_code == 200 and "<html" in r.text.lower()
+    assert r.headers.get("cache-control") == "no-cache"

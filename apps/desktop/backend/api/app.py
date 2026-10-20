@@ -307,7 +307,10 @@ def _phones() -> list[dict]:
 @app.get("/api/bt/phones")
 def bt_phones():
     """Paired phones, with the state of both phone features."""
-    return _bt_call(bt.phones())
+    try:  # Bluetooth enumeration occasionally fails once; a retry succeeds
+        return bt.call(bt.phones(), 15)
+    except Exception:
+        return _bt_call(bt.phones())
 
 
 @app.post("/api/bt/phones/output")
@@ -441,4 +444,8 @@ if DIST.exists():
     @app.get("/{path:path}")
     def spa(path: str):
         f = DIST / path
-        return FileResponse(f if path and f.is_file() else DIST / "index.html")
+        if path and f.is_file():
+            return FileResponse(f)
+        # Always revalidate the page itself: after an update, a cached copy would
+        # load the previous version's dashboard. (Assets have hashed names.)
+        return FileResponse(DIST / "index.html", headers={"Cache-Control": "no-cache"})
