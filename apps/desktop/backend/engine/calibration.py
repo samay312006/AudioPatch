@@ -28,7 +28,7 @@ from backend.engine.mixer import CH, MAX_DELAY_MS, SR
 log = logging.getLogger(__name__)
 
 CLICKS_PER_OUTPUT = 5
-LISTEN_S = 0.9          # Bluetooth can add 300+ ms; listen long enough after each click
+LISTEN_S = 1.3          # a phone over Bluetooth plus its headphones can add ~500 ms
 MIN_SNR = 15.0          # correlation peak vs. its noise floor
 AGREE_MS = 8.0          # clicks must agree this closely to count as one measurement
 MIN_AGREE = 3           # ...and at least this many must agree

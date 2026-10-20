@@ -35,7 +35,7 @@ def test_every_param_from_the_ui_is_stored(client):
 def test_delay_is_clamped(client):
     client.post("/api/outputs", json={"id": "out1"})
     r = client.post("/api/params", json={"id": "out1", "delay_ms": 9999})
-    assert r.json()["params"]["out1"]["delay_ms"] == 500.0
+    assert r.json()["params"]["out1"]["delay_ms"] == 1000.0
 
 
 def test_routing_flow(client):

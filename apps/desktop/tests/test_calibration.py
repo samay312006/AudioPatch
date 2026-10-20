@@ -50,8 +50,8 @@ def test_suggest_delays_aligns_to_slowest():
 
 
 def test_suggest_delays_clamps_beyond_slider_range():
-    delays, clamped = suggest_delays({"slow": 700.0, "fast": 10.0})
-    assert delays["fast"] == 500.0
+    delays, clamped = suggest_delays({"slow": 1500.0, "fast": 10.0})
+    assert delays["fast"] == 1000.0
     assert clamped == ["fast"]
 
 

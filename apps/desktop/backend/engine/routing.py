@@ -72,7 +72,7 @@ class RoutingState:
 
     PARAM_KEYS = {"volume": float, "muted": bool, "mono": bool,
                   "delay_ms": float, "measured_ms": float}
-    CLAMP = {"volume": (0.0, 2.0), "delay_ms": (0.0, 500.0)}
+    CLAMP = {"volume": (0.0, 2.0), "delay_ms": (0.0, 1000.0)}
 
     def set_params(self, dev_id: str, **values) -> None:
         with self._lock:

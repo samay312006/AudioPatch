@@ -60,24 +60,41 @@ class FloatRing(val capacityFrames: Int) {
 }
 
 /**
- * Consumer side of a network stream: holds the ring at [targetFrames] of
- * buffered audio (the jitter cushion) and cancels clock drift between sender
- * and this device by resampling by at most +/-0.3%.
+ * Consumer side of a network stream: holds the ring's *average* fill at
+ * [targetFrames] (the jitter cushion, i.e. a fixed latency) and cancels clock
+ * drift between sender and this device by resampling by at most +/-0.3%.
  *
- * A direct port of the desktop mixer's Route (apps/desktop/backend/engine/mixer.py),
- * with the same constants, so both ends behave identically.
+ * A port of the desktop mixer's Route (apps/desktop/backend/engine/mixer.py),
+ * with the same controller constants, so both ends behave identically. Two
+ * additions for bursty links (Bluetooth):
+ *  - [adaptive]: each underrun raises the target by 25 ms (up to 500 ms), so a
+ *    link that proves jitterier gets a bigger cushion; latency stays fixed
+ *    otherwise, which keeps calibrated sync valid.
+ *  - backlog cut: if even the *lowest* fill over a full ~2 s window is far above
+ *    the target (a backlog that arrived in one burst), jump down once. In normal
+ *    running the lowest fill is always below the average, so this can't fire.
  */
-class JitterReader(private val ring: FloatRing, var targetFrames: Int) {
+class JitterReader(
+    private val ring: FloatRing,
+    var targetFrames: Int,
+    private val adaptive: Boolean = false,
+) {
     companion object {
         const val KP = 2e-6        // speed change per frame of fill error (~10 s)
         const val KI = 1e-9        // per read (~20 s integral time at 5-10 ms reads)
         const val MAX_DEV = 0.003  // +/-0.3%: about 5 cents of pitch, inaudible
         const val EMA = 0.02
+        private const val SR = 48000
+        private const val MAX_TARGET = SR * 500 / 1000
+        private const val TARGET_STEP = SR * 25 / 1000
+        private const val BACKLOG_EXCESS = SR * 100 / 1000
     }
 
     var primed = false; private set
     var underruns = 0; private set
     var skips = 0; private set
+    /** Ring fill (frames) at the moment of the last underrun, for diagnostics. */
+    var lastUnderrunFill = -1; private set
     var step = 1.0; private set
     var fillAvg = 0.0; private set
     private var hasAvg = false
@@ -85,13 +102,21 @@ class JitterReader(private val ring: FloatRing, var targetFrames: Int) {
     private var pos = 0.0
     private val prev = FloatArray(CH)
     private var src = FloatArray(1)
+    // lowest fill over the current and the previous ~1 s block
+    private var curMin = Int.MAX_VALUE
+    private var prevMin = Int.MAX_VALUE
+    private var readsInBlock = 0
 
-    private val slackFrames get() = max(targetFrames, 48000 * 80 / 1000)
+    private val slackFrames get() = max(targetFrames, SR * 80 / 1000)
 
     fun reset() {
         primed = false; hasAvg = false; integ = 0.0; step = 1.0; pos = 0.0
+        curMin = Int.MAX_VALUE; prevMin = Int.MAX_VALUE; readsInBlock = 0
         prev.fill(0f)
     }
+
+    /** Lowest fill seen over the last ~1-2 s, for diagnostics. */
+    val recentMinFrames: Int get() = minOf(curMin, prevMin)
 
     /** Fill out[0 until n*CH]. Returns how many frames were real audio (rest is silence). */
     fun read(out: FloatArray, n: Int): Int {
@@ -111,6 +136,20 @@ class JitterReader(private val ring: FloatRing, var targetFrames: Int) {
             hasAvg = false
             avail = target
         }
+        curMin = minOf(curMin, avail)
+        if (++readsInBlock >= SR / n) {
+            val low = minOf(curMin, prevMin)
+            if (prevMin != Int.MAX_VALUE && low > target + BACKLOG_EXCESS) {
+                ring.skip(low - target)       // the whole curve sat too high: drop the backlog
+                avail -= low - target
+                skips++
+                hasAvg = false
+                curMin = Int.MAX_VALUE        // start measuring afresh
+            }
+            prevMin = curMin
+            curMin = Int.MAX_VALUE
+            readsInBlock = 0
+        }
         fillAvg = if (!hasAvg) avail.toDouble() else fillAvg + EMA * (avail - fillAvg)
         hasAvg = true
         val err = fillAvg - target
@@ -119,6 +158,8 @@ class JitterReader(private val ring: FloatRing, var targetFrames: Int) {
         val got = pull(out, n, step)
         if (got < n) {
             underruns++
+            lastUnderrunFill = ring.available
+            if (adaptive) targetFrames = minOf(targetFrames + TARGET_STEP, MAX_TARGET)
             reset()
             out.fill(0f, got * CH, n * CH)
         }

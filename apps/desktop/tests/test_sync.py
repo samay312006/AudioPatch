@@ -37,7 +37,7 @@ def run(src, outs, n_blocks):
     return {k: np.concatenate(v) for k, v in rendered.items()}
 
 
-@pytest.mark.parametrize("delay_ms", [0, 37, 120, 500])
+@pytest.mark.parametrize("delay_ms", [0, 37, 120, 500, 900])
 def test_delay_shifts_output_exactly(delay_ms):
     src = SourceNode("s", Params())
     ref = OutputMixer("ref", Params(), target_ms=20)

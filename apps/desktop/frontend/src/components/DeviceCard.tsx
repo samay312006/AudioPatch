@@ -170,7 +170,7 @@ export function ActiveCard({ d, routing, engine, byId, onError }: {
               <ParamSlider
                 id={d.id} param="delay_ms" label={`${d.name} lip-sync delay`}
                 tip="Lip-sync delay: hold this device back so it lines up with slower ones (e.g. Bluetooth). Calibrate sync sets this for you."
-                value={params.delay_ms ?? 0} min={0} max={500} step={1} format={(v) => `${Math.round(v)} ms`}
+                value={params.delay_ms ?? 0} min={0} max={1000} step={1} format={(v) => `${Math.round(v)} ms`}
                 icon={<Clock className="size-3.5 shrink-0 text-zinc-500" aria-hidden />}
               />
             </div>

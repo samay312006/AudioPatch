@@ -14,6 +14,8 @@ class OpusDecoder(private val sampleRate: Int = 48000, private val channels: Int
     private val info = MediaCodec.BufferInfo()
     private var ptsUs = 0L
     private var out = FloatArray(960 * channels * 2)
+    /** Packets dropped because the codec had no free input buffer in time. */
+    var inputDrops = 0; private set
 
     init {
         val format = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_OPUS, sampleRate, channels)
@@ -46,6 +48,8 @@ class OpusDecoder(private val sampleRate: Int = 48000, private val channels: Int
             buf.put(packet, offset, length)
             codec.queueInputBuffer(inIdx, 0, length, ptsUs, 0)
             ptsUs += 20_000
+        } else {
+            inputDrops++
         }
         while (true) {
             val outIdx = codec.dequeueOutputBuffer(info, 0)

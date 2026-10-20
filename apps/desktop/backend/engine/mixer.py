@@ -20,7 +20,7 @@ from backend.engine.ringbuffer import RingBuffer
 
 SR = 48000
 CH = 2
-MAX_DELAY_MS = 500.0
+MAX_DELAY_MS = 1000.0  # phones over Bluetooth can lag ~450 ms; leave headroom
 
 
 @dataclass

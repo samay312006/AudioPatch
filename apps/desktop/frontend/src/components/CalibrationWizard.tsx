@@ -283,7 +283,7 @@ function Results({ calibration, nameOf, onApply, onRetry }: {
       )}
       {calibration.clamped.length > 0 && (
         <p className="text-xs text-amber-300">
-          {calibration.clamped.map(nameOf).join(", ")} would need more than 500 ms of delay; it's set to the maximum.
+          {calibration.clamped.map(nameOf).join(", ")} would need more than 1000 ms of delay; it's set to the maximum.
         </p>
       )}
       {rows.length === 1 && anyOk && (

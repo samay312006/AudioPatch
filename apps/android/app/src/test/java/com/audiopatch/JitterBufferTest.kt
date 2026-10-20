@@ -82,6 +82,67 @@ class JitterBufferTest {
         }
     }
 
+    /**
+     * Bluetooth-like delivery: no loss, but the link goes quiet for up to 150 ms
+     * and then delivers a burst, plus 200 ppm clock drift. A 300 ms cushion must
+     * ride it out with no underruns and keep a steady latency.
+     */
+    @Test fun ridesOutBurstyLinks() {
+        val ring = FloatRing(sr * 2)
+        val reader = JitterReader(ring, sr * 300 / 1000, adaptive = true)
+        val rng = Random(7)
+        val out = FloatArray(240 * CH)
+        val packet = FloatArray(960 * CH) { 0.2f }
+        var due = 0.0        // packets the sender has produced (sender clock 200 ppm fast)
+        var sent = 0
+        var holdUntil = 0    // read index until which the link is "quiet"
+        val fills = ArrayList<Int>()
+        var underrunsAfterSettle = 0
+        for (r in 0 until 48000) {                 // 4 minutes of 5 ms reads
+            due += 240.0 * (1 + 200e-6) / 960
+            if (r >= holdUntil) {
+                while (sent < due.toInt()) { ring.write(packet, 960); sent++ }
+                if (rng.nextInt(100) < 3) holdUntil = r + 12 + rng.nextInt(19)   // 60-150 ms gap
+            }
+            val before = reader.underruns
+            reader.read(out, 240)
+            if (r > 12000) {
+                if (reader.underruns > before) underrunsAfterSettle++
+                fills.add(ring.available)
+            }
+        }
+        assertEquals("underruns after settling", 0, underrunsAfterSettle)
+        assertEquals("no cuts in steady state", 0, reader.skips)
+        val meanMs = fills.average() * 1000 / sr
+        assertTrue("mean latency $meanMs ms stays at the 300 ms target", abs(meanMs - 300) < 15)
+    }
+
+    /** A backlog that lands in one burst after connecting must be cut quickly, not drained for minutes. */
+    @Test fun cutsABacklogThatArrivesInOneBurst() {
+        val ring = FloatRing(sr * 2)
+        val reader = JitterReader(ring, sr * 300 / 1000, adaptive = true)
+        val out = FloatArray(240 * CH)
+        val packet = FloatArray(960 * CH) { 0.1f }
+        for (r in 0 until 2000) {                                     // 10 s of steady delivery...
+            if (r % 4 == 0) ring.write(packet, 960)
+            if (r == 200) ring.write(FloatArray(sr / 2 * CH) { 0.1f }, sr / 2)   // ...plus a 500 ms backlog
+            reader.read(out, 240)
+        }
+        val ms = ring.available * 1000 / sr
+        assertTrue("fill $ms ms after 10 s should be back near 300, not ~800", ms < 360)
+        assertEquals(0, reader.underruns)
+    }
+
+    @Test fun underrunsGrowTheCushion() {
+        val ring = FloatRing(sr * 2)
+        val reader = JitterReader(ring, sr * 100 / 1000, adaptive = true)
+        val out = FloatArray(240 * CH)
+        ring.write(FloatArray(sr / 5 * CH), sr / 5)       // 200 ms, then nothing: forces an underrun
+        repeat(100) { reader.read(out, 240) }
+        assertEquals(1, reader.underruns)
+        assertEquals(sr * 125 / 1000, reader.targetFrames)
+    }
+
     @Test fun resampledAudioStaysSmooth() {
         val ring = FloatRing(sr * 2)
         val reader = JitterReader(ring, 480 * 4)

@@ -48,6 +48,11 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        if (savedInstanceState == null && neededPermissions().all {
+                ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED }) {
+            AudioService.resumeIfWasOn(this)
+            if (Identity.prefs(this).getBoolean("receiver_on", false)) AppState.selectMode(Mode.RECEIVER)
+        }
         setContent { AudioPatchTheme { App() } }
     }
 }

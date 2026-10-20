@@ -8,8 +8,10 @@ import java.util.UUID
 /** How this phone introduces itself to the PC. The id survives app restarts so
  *  the PC remembers its volume and delay settings. */
 object Identity {
+    fun prefs(ctx: Context) = ctx.getSharedPreferences("audiopatch", Context.MODE_PRIVATE)
+
     fun id(ctx: Context): String {
-        val prefs = ctx.getSharedPreferences("audiopatch", Context.MODE_PRIVATE)
+        val prefs = prefs(ctx)
         return prefs.getString("phone_id", null) ?: UUID.randomUUID().toString().also {
             prefs.edit().putString("phone_id", it).apply()
         }

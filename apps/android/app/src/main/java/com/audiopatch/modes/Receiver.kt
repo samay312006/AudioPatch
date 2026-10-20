@@ -9,6 +9,8 @@ import android.media.AudioFormat
 import android.media.AudioTrack
 import android.os.Build
 import android.os.Process
+import android.os.SystemClock
+import android.util.Log
 import com.audiopatch.audio.CH
 import com.audiopatch.audio.FloatRing
 import com.audiopatch.audio.JitterReader
@@ -44,7 +46,12 @@ data class ReceiverStatus(
  */
 class Receiver(private val phoneId: String, private val phoneName: String) {
     companion object {
-        const val TARGET_MS = 100   // jitter cushion: Bluetooth delivers in bursts
+        // Measured on a real link: no packets lost, but RFCOMM goes quiet for up
+        // to ~150 ms at a time (radio shared with the phone's own headphones), and
+        // the fill swings ~+/-100 ms around its average. 100 ms ran dry ~1/s and
+        // 200 ms ~1/15 s; 300 ms keeps the dips above the worst gaps. Underruns
+        // still raise it (adaptive), and latency is otherwise fixed so sync holds.
+        const val TARGET_MS = 300
     }
 
     private val _status = MutableStateFlow(ReceiverStatus())
@@ -58,7 +65,7 @@ class Receiver(private val phoneId: String, private val phoneName: String) {
     private val threads = java.util.concurrent.CopyOnWriteArrayList<Thread>()
     @Volatile private var resetPending = false  // set by the network thread, applied by the audio thread
     private val ring = FloatRing(BtProtocol.SAMPLE_RATE * 2)
-    private val reader = JitterReader(ring, BtProtocol.SAMPLE_RATE * TARGET_MS / 1000)
+    private val reader = JitterReader(ring, BtProtocol.SAMPLE_RATE * TARGET_MS / 1000, adaptive = true)
 
     @SuppressLint("MissingPermission")  // BLUETOOTH_CONNECT is requested before starting
     fun start(adapter: BluetoothAdapter) {
@@ -133,11 +140,18 @@ class Receiver(private val phoneId: String, private val phoneName: String) {
         val player = thread("audio-out", Process.THREAD_PRIORITY_URGENT_AUDIO) { playLoop(alive) }
 
         val decoder = OpusDecoder(BtProtocol.SAMPLE_RATE, BtProtocol.CHANNELS)
+        val stats = LinkStats()
         try {
             while (running) {
                 val f = BtProtocol.read(input)
                 if (f.type == BtProtocol.AUDIO && f.payload.size > 4) {
-                    decoder.decode(f.payload, 4, f.payload.size - 4) { pcm, frames -> ring.write(pcm, frames) }
+                    stats.onPacket(BtProtocol.audioSeq(f.payload))
+                    decoder.decode(f.payload, 4, f.payload.size - 4) { pcm, frames ->
+                        stats.pcmFrames += frames
+                        ring.write(pcm, frames)
+                    }
+                    stats.maybeLog(decoder.inputDrops, ring.overruns, reader.underruns, reader.skips, ring.available,
+                        reader.recentMinFrames, reader.lastUnderrunFill, reader.targetFrames)
                 } else if (f.type == BtProtocol.CONTROL) {
                     val msg = JSONObject(String(f.payload))
                     if (msg.optString("t") == "state") {
@@ -189,6 +203,38 @@ class Receiver(private val phoneId: String, private val phoneName: String) {
         } finally {
             track.stop()
             track.release()
+        }
+    }
+
+    /** Link health counters, logged to logcat (tag AudioPatch) every 5 s. */
+    private class LinkStats {
+        var packets = 0L
+        var seqGaps = 0L
+        var pcmFrames = 0L
+        var maxGapMs = 0L
+        private var lastSeq = -1L
+        private var lastArrival = 0L
+        private var lastLog = SystemClock.elapsedRealtime()
+
+        fun onPacket(seq: Long) {
+            val now = SystemClock.elapsedRealtime()
+            if (lastArrival != 0L) maxGapMs = maxOf(maxGapMs, now - lastArrival)
+            lastArrival = now
+            if (lastSeq >= 0 && seq != lastSeq + 1) seqGaps++
+            lastSeq = seq
+            packets++
+        }
+
+        fun maybeLog(decoderDrops: Int, overruns: Int, underruns: Int, skips: Int, buffered: Int, minFill: Int,
+                     lastUnderrunFill: Int, target: Int) {
+            val now = SystemClock.elapsedRealtime()
+            if (now - lastLog < 5000) return
+            Log.i("AudioPatch", "link: packets=$packets seqGaps=$seqGaps pcmFrames=$pcmFrames " +
+                "(expect ${packets * 960}) decoderDrops=$decoderDrops maxGapMs=$maxGapMs " +
+                "overruns=$overruns underruns=$underruns skips=$skips bufferedMs=${buffered / 48} minFillMs=${minFill / 48} lastUnderrunFill=$lastUnderrunFill " +
+                "targetMs=${target / 48}")
+            lastLog = now
+            maxGapMs = 0
         }
     }
 
