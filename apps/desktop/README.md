@@ -215,7 +215,7 @@ Requirements: **Windows 10/11**, **Python 3.11+**, **Node.js 18+**.
 
 ```powershell
 git clone https://github.com/samay312006/AudioPatch.git
-cd atmos\apps\desktop
+cd AudioPatch\apps\desktop
 python -m venv .venv
 .venv\Scripts\pip install -r requirements-dev.txt
 python run.py
