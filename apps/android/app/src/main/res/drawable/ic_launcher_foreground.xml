@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Five equaliser bars, centred in the 72dp safe zone of the 108dp canvas -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M33,46.5h5v15h-5z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M41.5,40.5h5v27h-5z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M50,37h5v34h-5z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M58.5,43h5v22h-5z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M67,48h5v12h-5z" />
+</vector>
