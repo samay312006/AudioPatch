@@ -58,8 +58,6 @@ class Receiver(private val phoneId: String, private val phoneName: String) {
     val status: StateFlow<ReceiverStatus> = _status.asStateFlow()
 
     @Volatile private var running = false
-    /** Called when the session ends on its own (error / PC gone), so the service can stop. */
-    var onEnded: (() -> Unit)? = null
     private var socket: BluetoothSocket? = null
     private var server: BluetoothServerSocket? = null
     private val threads = java.util.concurrent.CopyOnWriteArrayList<Thread>()
@@ -73,23 +71,39 @@ class Receiver(private val phoneId: String, private val phoneName: String) {
         running = true
         _status.value = ReceiverStatus(waiting = true)
         thread("bt-listen") {
-            try {
-                val ss = adapter.listenUsingRfcommWithServiceRecord("AudioPatch", BtProtocol.SERVICE_UUID)
-                server = ss
-                while (running) {
-                    val s = ss.accept()          // blocks until the PC connects
-                    socket = s
-                    try {
-                        session(s)
-                    } catch (e: Exception) {
-                        // PC went away; keep waiting so it can reconnect
-                    } finally {
-                        try { s.close() } catch (_: Exception) {}
-                        if (running) _status.value = ReceiverStatus(waiting = true)
+            // Self-healing: Bluetooth events (radio resets, link losses, Bluetooth
+            // being switched off) can close the listening socket itself. Seen on a
+            // real phone. Instead of giving up, re-open it and keep waiting.
+            while (running) {
+                try {
+                    if (!adapter.isEnabled) {
+                        _status.value = ReceiverStatus(waiting = true, error = "Bluetooth is off. Turn it on to continue.")
+                        Thread.sleep(2000)
+                        continue
                     }
+                    val ss = adapter.listenUsingRfcommWithServiceRecord("AudioPatch", BtProtocol.SERVICE_UUID)
+                    server = ss
+                    _status.value = ReceiverStatus(waiting = true)
+                    while (running) {
+                        val s = ss.accept()          // blocks until the PC connects
+                        socket = s
+                        try {
+                            session(s)
+                        } catch (e: Exception) {
+                            // PC went away; keep waiting so it can reconnect
+                        } finally {
+                            try { s.close() } catch (_: Exception) {}
+                            if (running) _status.value = ReceiverStatus(waiting = true)
+                        }
+                    }
+                } catch (e: IOException) {
+                    if (!running) break
+                    Log.i("AudioPatch", "listener closed (${e.message}); re-opening")
+                    try { server?.close() } catch (_: Exception) {}
+                    try { Thread.sleep(2000) } catch (_: InterruptedException) { break }
+                } catch (_: InterruptedException) {
+                    break
                 }
-            } catch (e: IOException) {
-                if (running) fail("Bluetooth stopped: ${e.message}")
             }
         }
     }
@@ -107,13 +121,6 @@ class Receiver(private val phoneId: String, private val phoneName: String) {
         _status.value = ReceiverStatus()
     }
 
-    private fun fail(msg: String) {
-        _status.update { ReceiverStatus(error = msg) }
-        running = false
-        try { socket?.close() } catch (_: Exception) {}
-        try { server?.close() } catch (_: Exception) {}
-        onEnded?.invoke()
-    }
 
     private fun session(s: BluetoothSocket) {
         val input = s.inputStream

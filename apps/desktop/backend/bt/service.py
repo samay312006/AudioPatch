@@ -324,7 +324,8 @@ class BluetoothService:
             bd = await BluetoothDevice.from_id_async(link_id)
             if bd is None:
                 raise RuntimeError("that phone isn't paired with this PC")
-            hint = f"couldn't reach the app on {bd.name}: open AudioPatch there, turn on Wireless output, and try again"
+            hint = (f"couldn't reach the app on {bd.name}: open AudioPatch there, turn on Wireless output, and try "
+                    "again. If it keeps failing, turn Bluetooth off and on in Windows (laptop radios can get stuck).")
             sock = None
             for attempt in range(2):  # the phone may still be releasing a previous session
                 try:

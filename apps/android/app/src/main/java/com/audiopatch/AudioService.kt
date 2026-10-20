@@ -30,15 +30,13 @@ class AudioService : Service() {
     companion object {
         const val ACTION_RECEIVE = "com.audiopatch.RECEIVE"
         const val ACTION_STOP = "com.audiopatch.STOP"
-        private const val EXTRA_BY_USER = "by_user"
         private const val CHANNEL = "playback"
         private const val NOTIFICATION_ID = 1
 
         fun receive(ctx: Context) = ctx.startForegroundService(
             Intent(ctx, AudioService::class.java).setAction(ACTION_RECEIVE))
 
-        fun stop(ctx: Context, byUser: Boolean = true) = ctx.startService(
-            Intent(ctx, AudioService::class.java).setAction(ACTION_STOP).putExtra(EXTRA_BY_USER, byUser))
+        fun stop(ctx: Context) = ctx.startService(Intent(ctx, AudioService::class.java).setAction(ACTION_STOP))
 
         /** Turn wireless output back on if it was on when the app last ran. */
         fun resumeIfWasOn(ctx: Context) {
@@ -54,15 +52,11 @@ class AudioService : Service() {
                 Identity.prefs(this).edit().putBoolean("receiver_on", true).apply()
                 ServiceCompat.startForeground(this, NOTIFICATION_ID, notification("Wireless output is on"),
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
-                val receiver = Engines.receiver(this)
-                receiver.onEnded = { stop(this, byUser = false) }
-                receiver.start(getSystemService(BluetoothManager::class.java).adapter)
+                Engines.receiver(this).start(getSystemService(BluetoothManager::class.java).adapter)
                 AppState.set(RunState.RUNNING)
             }
             ACTION_STOP -> {
-                if (intent.getBooleanExtra(EXTRA_BY_USER, true)) {
-                    Identity.prefs(this).edit().putBoolean("receiver_on", false).apply()
-                }
+                Identity.prefs(this).edit().putBoolean("receiver_on", false).apply()
                 Engines.receiver(this).stop()
                 AppState.set(RunState.IDLE)
                 ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)

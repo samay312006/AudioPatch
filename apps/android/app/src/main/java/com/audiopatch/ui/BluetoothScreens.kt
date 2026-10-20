@@ -88,6 +88,7 @@ fun ReceiverScreen() {
 
     Card(highlight = status.streaming) {
         when {
+            status.pc == null && status.error != null -> StatusLine(Palette.warn, status.error!!)
             status.pc == null -> StatusLine(Palette.warn, "Waiting for your PC…")
             status.streaming -> StatusLine(Palette.good, "Playing audio from ${status.pc}")
             else -> StatusLine(Palette.accent, "Connected to ${status.pc}")
