@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/icon.png" width="96" alt="AudioPatch icon">
+  <img src="docs/icon.png" width="96" alt="AudioPatch icon">
 </p>
 
 <h1 align="center">AudioPatch</h1>

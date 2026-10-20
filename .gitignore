@@ -1,21 +1,30 @@
-# Python
+# ---- Desktop (Python + web dashboard) ----
 .venv/
 __pycache__/
 *.pyc
 .pytest_cache/
+node_modules/
+apps/desktop/frontend/dist/
+*.tsbuildinfo
+# personal settings saved by the app
+apps/desktop/presets/*.json
 
-# Frontend
-frontend/node_modules/
-frontend/dist/
+# ---- Android ----
+.gradle/
+local.properties
+*.iml
+.idea/
+.kotlin/
+captures/
+*.keystore
+*.jks
 
-# Build output (PyInstaller) and release archives
+# ---- Build output and release archives (both apps) ----
 build/
 dist/
 *.zip
+*.apk
+*.aab
 
-# Personal settings: device setup saved by the app
-presets/*.json
-
-# Tooling
+# ---- Tooling ----
 .playwright-mcp/
-*.tsbuildinfo
